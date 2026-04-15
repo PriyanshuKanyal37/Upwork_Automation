@@ -1,0 +1,17 @@
+flowchart LR
+    L1[Job URL] --> L2[Extracted markdown]
+    L2 --> L3[Prompt context build]
+    L3 --> L4[LLM generation]
+    L4 --> L5[Validated artifacts]
+
+    L5 --> O1[(job_outputs\nartifact_versions_json\napproval_snapshot_json\nai_usage_summary_json)]
+    L4 --> O3[(job_generation_runs)]
+
+    O1 --> U1[User review and edits]
+    U1 --> U2[Targeted regenerate]
+    U2 --> O1
+
+    O1 --> A1[Approval snapshot]
+    A1 --> P1[Connector publish payload]
+    P1 --> E1[External systems\nGoogle Docs Airtable]
+    E1 --> R1[(publish refs in jobs/connectors tables)]

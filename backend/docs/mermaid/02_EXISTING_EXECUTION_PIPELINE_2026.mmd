@@ -1,0 +1,30 @@
+flowchart TD
+    A1[POST /jobs/intake] --> A2[Middleware checks]
+    A2 --> A3{Session valid}
+    A3 -->|no| A4[401]
+    A3 -->|yes| A5[Normalize URL + parse job id]
+    A5 --> A6{Duplicate exists}
+    A6 -->|yes| A7[duplicate decision required]
+    A6 -->|no| A8[Create job status=draft]
+
+    A8 --> B1[POST /jobs/{id}/extract]
+    B1 --> B2{QUEUE_DRIVER}
+    B2 -->|inline| B3[Inline extraction]
+    B2 -->|dramatiq| B4[Enqueue to Redis broker]
+    B4 --> B5[Worker consume task]
+    B5 --> B6[Acquire Redis lock]
+    B6 --> B7{Lock acquired}
+    B7 -->|no| B8[Skip duplicate task]
+    B7 -->|yes| B9[Firecrawl scrape]
+    B3 --> B9
+
+    B9 --> B10{Scrape success}
+    B10 -->|yes| B11[Persist markdown + status=ready]
+    B10 -->|no| B12[Persist error + requires_manual_markdown]
+    B12 --> B13[POST /jobs/{id}/manual-markdown]
+    B13 --> B14[Persist manual markdown + status=ready]
+
+    B11 --> C1[GET/PATCH outputs]
+    B14 --> C1
+    C1 --> C2[History/status/submission APIs]
+    C2 --> C3[Metrics + audit + logs]

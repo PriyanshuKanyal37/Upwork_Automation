@@ -1,0 +1,31 @@
+flowchart TD
+    F1[Failure occurs] --> F2{Failure class}
+
+    F2 -->|auth/rate-limit/timeout| F3[Return typed API error]
+    F3 --> F4[Client retry with backoff]
+
+    F2 -->|queue lock conflict| F5[Skip duplicate worker execution]
+    F5 --> F6[No data corruption]
+
+    F2 -->|Firecrawl transient| F7[Retry extraction]
+    F7 --> F8{Recovered}
+    F8 -->|yes| F9[Continue pipeline]
+    F8 -->|no| F10[Mark manual_required + extraction_error]
+
+    F2 -->|LLM transient| F11[Retry generate]
+    F11 --> F12{Recovered}
+    F12 -->|yes| F13[Continue validation]
+    F12 -->|no| F14[generation_run failed provider_error]
+
+    F2 -->|LLM malformed output| F15[Validation reject]
+    F15 --> F16[generation_run failed invalid_output]
+
+    F2 -->|connector publish failure| F17[Keep job approved]
+    F17 --> F18[Allow publish retry]
+
+    F10 --> F19[Audit event]
+    F14 --> F19
+    F16 --> F19
+    F18 --> F19
+    F19 --> F20[Metrics update]
+    F20 --> F21[Incident runbook decision]

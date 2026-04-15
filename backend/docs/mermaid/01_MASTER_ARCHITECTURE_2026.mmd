@@ -1,0 +1,72 @@
+flowchart LR
+    U[User / Frontend] --> G[FastAPI Gateway]
+    G --> MW[Middleware\nrequest-id timeout\nrate-limit idempotency]
+
+    MW --> AUTH[Auth APIs]
+    MW --> PROF[Profile APIs]
+    MW --> JOB[Jobs APIs]
+    MW --> OUT[Outputs APIs]
+    MW --> CONN[Connectors APIs]
+    MW --> MET[Metrics API]
+
+    AUTH --> SA[Auth Service]
+    PROF --> SP[Profile Service]
+    JOB --> SJ[Job Service]
+    OUT --> SO[Output Service]
+    CONN --> SC[Connector Service]
+
+    SA --> DB[(Neon Postgres)]
+    SP --> DB
+    SJ --> DB
+    SO --> DB
+    SC --> DB
+
+    SJ --> Q{QUEUE_DRIVER}
+    Q -->|inline| INL[Inline extraction]
+    Q -->|dramatiq| BRK[Redis Broker]
+    BRK --> WRK[Dramatiq Worker]
+    WRK --> LOCK[Redis per-job lock]
+    INL --> FC[Firecrawl]
+    WRK --> FC
+    FC -->|success| DB
+    FC -->|failed| MAN[Manual markdown fallback]
+    MAN --> DB
+
+    subgraph AI_TARGET[AI Layer - Remaining]
+        ORC[Generation Orchestrator]
+        PB[Prompt Builder]
+        LLM[OpenAI Adapter]
+        VAL[Structured Validator]
+        RUN[(generation_runs)]
+        REV[(output_revisions)]
+        APP[Approval Gate]
+        PUB[Publisher Adapters\nGoogle Docs Airtable]
+        COST[Cost quota safety guards]
+    end
+
+    SJ -. generate trigger .-> ORC
+    SO -. regenerate trigger .-> ORC
+    ORC --> PB --> LLM --> VAL
+    VAL --> SO
+    VAL --> RUN
+    SO --> REV
+    SO --> APP --> PUB
+    ORC --> COST
+    PUB --> DB
+
+    subgraph OBS[Operations]
+        LOG[Structured logs]
+        AUD[Audit events]
+        MTR[Metrics collector]
+        CI[CI checks]
+        RB[Runbooks]
+    end
+
+    MW --> LOG
+    SJ --> AUD
+    WRK --> MTR
+    FC --> MTR
+    ORC --> MTR
+    MTR --> MET
+    CI -. quality gate .-> G
+    RB -. incident response .-> G

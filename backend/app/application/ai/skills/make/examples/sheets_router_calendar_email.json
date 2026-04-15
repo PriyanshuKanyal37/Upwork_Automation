@@ -1,0 +1,89 @@
+{
+  "name": "Sheets Update -> Router -> Calendar + Email",
+  "flow": [
+    {
+      "id": 1,
+      "module": "google-sheets:watchUpdatedCells",
+      "version": 2,
+      "parameters": { "__IMTHOOK__": 1 },
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 450 }
+      }
+    },
+    {
+      "id": 2,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "mapper": null,
+      "metadata": {
+        "designer": { "x": 300, "y": 450 }
+      },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 3,
+              "module": "google-calendar:createAnEvent",
+              "version": 5,
+              "parameters": { "__IMTCONN__": 1 },
+              "filter": {
+                "name": "ADD flag true",
+                "conditions": [
+                  [{ "a": "{{1.rowValues[].`0`}}", "b": "TRUE", "o": "text:equal:ci" }]
+                ]
+              },
+              "mapper": {
+                "calendar": "primary",
+                "start": "{{formatDate(1.rowValues[].`4`; ; \"New_York\")}}",
+                "end": "{{formatDate(1.rowValues[].`4`; ; \"New_York\")}}",
+                "summary": "NEW: {{1.rowValues[].`6`}}",
+                "description": "{{1.rowValues[].`6`}}\n{{1.rowValues[].`5`}}",
+                "allDayEvent": true
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 4,
+              "module": "email:ActionSendEmail",
+              "version": 7,
+              "parameters": { "account": 1 },
+              "filter": {
+                "name": "Has recipient",
+                "conditions": [
+                  [{ "a": "{{1.rowValues[].`10`}}", "o": "exist" }]
+                ]
+              },
+              "mapper": {
+                "to": ["{{1.rowValues[].`10`}}"],
+                "subject": "Event on {{formatDate(1.rowValues[].`4`; \"MM/DD/YYYY\")}}",
+                "html": "Details: {{1.rowValues[].`6`}}<br>{{1.rowValues[].`5`}}",
+                "contentType": "html"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] },
+    "zone": "us1.make.com"
+  }
+}

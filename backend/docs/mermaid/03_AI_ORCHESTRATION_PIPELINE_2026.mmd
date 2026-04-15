@@ -1,0 +1,32 @@
+flowchart TD
+    G1[POST /jobs/{id}/generate] --> G2[Create generation_run status=running]
+    G2 --> G3[Load prompt context\nprofile templates\ncustom blocks\njob markdown\nconnector context]
+    G3 --> G4[Policy gates\nquota cost safety]
+    G4 --> G5{Policy pass}
+    G5 -->|no| G6[generation_run failed policy_denied]
+    G5 -->|yes| G7[Call LLM provider adapter]
+
+    G7 --> G8{Provider response}
+    G8 -->|transient failure| G9[Retry with bounded backoff]
+    G9 --> G10{Retries exhausted}
+    G10 -->|no| G7
+    G10 -->|yes| G11[generation_run failed provider_error]
+
+    G8 -->|response ok| G12[Validate structured outputs\nworkflow JSON schema]
+    G12 --> G13{Validation pass}
+    G13 -->|no| G14[generation_run failed invalid_output]
+    G13 -->|yes| G15[Persist proposal loom doc workflows]
+    G15 --> G16[Create output revisions]
+    G16 --> G17[Mark run success\nmodel prompt_hash tokens latency cost]
+    G17 --> G18[Set job status=review_ready]
+
+    G18 --> R1[User review]
+    R1 --> R2{Need regenerate}
+    R2 -->|yes| R3[POST /jobs/{id}/outputs/{type}/regenerate]
+    R3 --> R4[Run partial orchestration for selected output]
+    R4 --> R5[Append revision + edit log]
+    R2 -->|no| A1[Approve path]
+    R5 --> A1
+
+    A1[POST /jobs/{id}/approve] --> A2[Freeze approved revision set]
+    A2 --> A3[Job status=approved]

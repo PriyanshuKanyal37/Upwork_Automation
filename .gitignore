@@ -1,0 +1,66 @@
+# Editor / IDE
+.vscode/
+.idea/
+.stitch/
+.claude/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# OS
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.production
+.env.*.local
+backend/.env
+frontend/.env.local
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+*.db
+backend/agentloopr.db
+backend/test_agentloopr.db
+backend/ci_migration.db
+backend/uat_agentloopr.db
+
+# Node / frontend build
+node_modules/
+frontend/dist/
+frontend/dist-ssr/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Claude Code / Codex scans & session dumps
+.backend_docs_scan.json
+.codex_phase0_files.txt
+.phase0_summary.json
+2026-*.txt
+
+# Local scratch / notes (not meant for repo)
+files.txt
+project_files.txt
+project_files_utf8.txt
+typography.txt
+test.json
+AUDIT_REPORT.md
+BUGS_REMAINING.md
+All_Docs/
+UI_suggestion/
+output/
+temp/

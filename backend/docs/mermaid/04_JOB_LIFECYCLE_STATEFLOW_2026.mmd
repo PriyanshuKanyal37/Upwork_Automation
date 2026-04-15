@@ -1,0 +1,27 @@
+flowchart TD
+    S0[draft] --> S1{duplicate detected}
+    S1 -->|yes| S2[duplicate_review]
+    S1 -->|no| S3[processing]
+
+    S2 -->|continue| S3
+    S2 -->|skip| S9[closed]
+
+    S3 --> S4{extraction result}
+    S4 -->|success| S5[ready]
+    S4 -->|failed| S6[manual_required]
+    S6 -->|manual markdown submitted| S5
+
+    S5 --> S7[generating]
+    S7 --> S8{generation result}
+    S8 -->|success| S10[review_ready]
+    S8 -->|provider/schema failure| S11[generation_failed]
+    S11 -->|retry allowed| S7
+    S11 -->|manual fallback| S6
+
+    S10 --> S12[approved]
+    S12 --> S13{publish path}
+    S13 -->|connector publish success| S14[published]
+    S13 -->|manual submission update| S15[submitted]
+
+    S14 --> S9
+    S15 --> S9

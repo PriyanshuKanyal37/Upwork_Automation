@@ -1,0 +1,158 @@
+flowchart TD
+    A0[AI Layer Execution Blueprint 2026] --> A1[Input Source Resolution]
+    A1 --> A2{Firecrawl extract success}
+    A2 -->|yes| A3[Use extracted markdown]
+    A2 -->|no or empty| A4[Require manual full job post paste]
+    A4 --> A5[Use manual text]
+    A3 --> B1
+    A5 --> B1
+
+    B1[Job Understanding Layer] --> B2[Build structured job contract]
+    B2 --> B3[summary deliverables questions constraints platform hints confidence]
+    B3 --> B4{Confidence acceptable}
+    B4 -->|no| B5[Block generation and ask user correction]
+    B4 -->|yes| C1[Generation Planning]
+
+    C1 --> C2[Decide required artifacts]
+    C2 --> C3[Decide platform path n8n make both]
+    C3 --> C4{Job mentions Make.com only}
+    C4 -->|yes| C5[Ask user choose Make.com or n8n]
+    C4 -->|no| C6[Default n8n]
+    C5 --> D1
+    C6 --> D1
+
+    D1[Policy Gate] --> D2[cost quota safety checks]
+    D2 --> D3{Policy pass}
+    D3 -->|no| D4[Reject run with auditable reason]
+    D3 -->|yes| E0[Routing Mode]
+
+    subgraph ROUTING_MODE[Routing Mode Options]
+        direction TB
+        E0 --> E01[Fixed per artifact routing\nrecommended first release]
+        E0 --> E02[Dynamic router by complexity budget confidence\npost-stability phase]
+    end
+
+    E01 --> E1
+    E02 --> E1
+
+    subgraph MODEL_ROUTER[Task to Model Routing with Fallback]
+        direction TB
+        E1[Route tasks] --> E2[Job understanding\nPrimary gpt-5.4-mini\nFallback claude-sonnet-4-5]
+        E1 --> E3[Proposal cover letter screening answers\nPrimary gpt-5.4-mini\nFallback claude-sonnet-4-5\nEscalate to Claude on quality fail]
+        E1 --> E4[Workflow generation and repair\nPrimary claude-sonnet-4-5\nFallback gpt-5.4]
+    end
+
+    E2 --> F1
+    E3 --> F1
+    E4 --> F1
+
+    subgraph PROVIDER_FAILOVER[Provider Fallback Policy]
+        direction TB
+        PF1[Primary provider call fails] --> PF2{Fallback available}
+        PF2 -->|yes| PF3[Invoke fallback provider model]
+        PF2 -->|no| PF4[Mark provider_unavailable and notify user clearly]
+    end
+
+    E2 -. on failure .-> PF1
+    E3 -. on failure .-> PF1
+    E4 -. on failure .-> PF1
+    PF3 --> F1
+
+    F1[Generate Artifacts] --> F2[Proposal and cover letter]
+    F1 --> F3[Screening question answers]
+    F1 --> F4[Loom script]
+    F1 --> F5[Workflow JSON + visual metadata]
+    F1 --> F6[Doc content for web preview]
+
+    F2 --> G1
+    F3 --> G1
+    F4 --> G1
+    F5 --> G1
+    F6 --> G1
+
+    G1[Deterministic Validation] --> G2[Artifact contracts]
+    G1 --> G3[Workflow schema checks]
+    G2 --> G4{Valid}
+    G3 --> G4
+    G4 -->|no| G5[Fail run invalid_output]
+    G4 -->|yes| H1[Persist Outputs and AI Tracking]
+
+    H1 --> H2[Save generated outputs]
+    H1 --> H3[Append artifact versions in job_outputs JSON]
+    H1 --> H4[Save generation run metadata\nmodel prompt hash usage latency cost retries]
+
+    H2 --> I1[Review Experience]
+    H3 --> I1
+    H4 --> I1
+
+    I1 --> I2[Generate All completes]
+    I2 --> I3[Per-artifact regenerate with custom instruction]
+    I3 --> I4[Create new version do not overwrite]
+    I4 --> I5[User toggle version 1 2 3]
+
+    I5 --> J1[Approval Snapshot]
+    J1 --> J2[Freeze selected revision set]
+
+    J2 --> K1[Publish Layer]
+    K1 --> K2{User requests Google Docs export}
+    K2 -->|yes| K3[Create new Google Doc each time]
+    K2 -->|no| K4[Keep web-only output]
+
+    K3 --> K5[Store external refs]
+    K4 --> K5
+
+    K5 --> L1[Workflow Delivery]
+    L1 --> L2[n8n import-ready JSON as primary]
+    L1 --> L3[Make.com output when user selected]
+    L2 --> L4[Visual workflow view in product UI]
+    L3 --> L4
+    L4 --> L5[Sticky note explanations inside generated workflow]
+
+    L5 --> M1[Submission and outcome tracking]
+
+    subgraph RELIABILITY[Failure and Reliability]
+        direction TB
+        R1[Provider transient error]
+        R2[Bounded retry with backoff]
+        R3[Retry exhausted -> provider_error]
+        R4[Publish failure -> keep approved allow retry]
+        R5[All failures -> audit + metrics]
+    end
+
+    E1 --> R1 --> R2 --> R3
+    K1 --> R4
+    D4 --> R5
+    G5 --> R5
+    R3 --> R5
+    R4 --> R5
+    PF4 --> R5
+
+    subgraph PERSISTENCE[Persistence Contracts]
+        direction TB
+        P1[(job_outputs\nartifact_versions_json\napproval_snapshot_json\nai_usage_summary_json)]
+        P3[(job_generation_runs)]
+        P4[(jobs connectors external refs)]
+        P8[(llm_routing_rules optional)]
+    end
+
+    H2 --> P1
+    H3 --> P1
+    H4 --> P3
+    K5 --> P4
+    E1 --> P8
+
+    subgraph DASHBOARD[Usage and Cost Dashboard]
+        direction TB
+        DSH1[Daily spend by provider and model]
+        DSH2[All-time spend]
+        DSH3[Token usage trend]
+        DSH4[Failure and fallback trend]
+    end
+
+    P3 --> DSH1
+    P3 --> DSH2
+    P3 --> DSH3
+    P3 --> DSH4
+
+    Z1[Definition of Done\nunderstanding driven validated versioned cost-controlled publishable AI pipeline]
+    M1 --> Z1

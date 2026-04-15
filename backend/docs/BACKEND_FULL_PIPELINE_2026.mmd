@@ -1,0 +1,39 @@
+flowchart TD
+    M0[BACKEND FULL PIPELINE MASTER 2026] --> M1[01_MASTER_ARCHITECTURE_2026.mmd]
+    M0 --> M2[02_EXISTING_EXECUTION_PIPELINE_2026.mmd]
+    M0 --> M3[03_AI_ORCHESTRATION_PIPELINE_2026.mmd]
+    M0 --> M4[04_JOB_LIFECYCLE_STATEFLOW_2026.mmd]
+    M0 --> M5[05_FAILURE_AND_RECOVERY_2026.mmd]
+    M0 --> M6[06_DATA_LINEAGE_2026.mmd]
+
+    subgraph NOW[Implemented Now]
+        N1[Auth and session cookie]
+        N2[Profile CRUD]
+        N3[Job intake + duplicate decision]
+        N4[Extraction inline or queue]
+        N5[Firecrawl + manual fallback]
+        N6[Outputs CRUD + targeted regenerate endpoint]
+        N7[Connector registry and status]
+        N8[History outcome submission APIs]
+        N9[Reliability middleware + metrics + audit + CI]
+    end
+
+    subgraph NEXT[Remaining AI Product Path]
+        X1[Generate endpoint orchestration]
+        X2[LLM provider adapter OpenAI]
+        X3[Prompt builder with templates and context]
+        X4[Structured validator for workflow JSON]
+        X5[generation_runs and output_revisions persistence]
+        X6[Approve and publish orchestration]
+        X7[Google Docs Airtable live adapters]
+        X8[Cost quota safety guardrails]
+        X9[AI integration and contract tests]
+    end
+
+    M1 --> NOW
+    M1 --> NEXT
+    NOW --> M2
+    NEXT --> M3
+    NEXT --> M4
+    NEXT --> M5
+    NEXT --> M6

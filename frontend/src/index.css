@@ -1,0 +1,600 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Design Tokens ─── */
+:root {
+  /* Surfaces */
+  --surface:           #0a0c0b;
+  --surface-low:       #0e1110;
+  --surface-container: #141816;
+  --surface-high:      #1c201e;
+  --surface-highest:   #252a27;
+
+  /* Text */
+  --on-surface:        #edf2ef;
+  --on-surface-muted:  #7a8882;
+  --on-surface-subtle: #3d4843;
+
+  /* Accent — Muted Ocean Teal (calm, research-backed for dark UIs) */
+  --primary:           #5ba8a0;
+  --primary-dim:       #4a9088;
+  --primary-glow:      rgba(91, 168, 160, 0.12);
+  --on-primary:        #001a18;
+
+  /* Semantic */
+  --danger:            #f87171;
+  --warning:           #fbbf24;
+  --border:            rgba(255,255,255,0.07);
+  --border-accent:     rgba(91, 168, 160, 0.22);
+}
+
+/* ─── Reset ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  height: 100%;
+  background: var(--surface);
+  color-scheme: dark;
+}
+
+body {
+  height: 100%;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--on-surface);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root { height: 100%; }
+
+a { color: inherit; text-decoration: none; }
+
+button, input, textarea, select { font: inherit; }
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent; }
+
+/* ─── Brand ─── */
+.brand-wordmark {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.brand-name {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.brand-name-main  { color: var(--on-surface); }
+.brand-name-slash { color: var(--on-surface-subtle); font-weight: 400; }
+.brand-name-accent { color: var(--primary); }
+
+.brand-sub {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--on-surface-muted);
+}
+
+/* ─── Card / Panel ─── */
+.card {
+  background: var(--surface-container);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.card-elevated {
+  background: linear-gradient(
+    160deg,
+    rgba(255,255,255,0.035) 0%,
+    rgba(255,255,255,0.01) 100%
+  ),
+  var(--surface-container);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.04) inset,
+    0 20px 60px rgba(0,0,0,0.3);
+}
+
+/* ─── Input ─── */
+.input {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--on-surface);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 150ms, background 150ms;
+}
+
+.input::placeholder { color: var(--on-surface-muted); }
+
+.input:focus {
+  border-color: var(--border-accent);
+  background: rgba(255,255,255,0.06);
+}
+
+textarea.input { height: auto; padding: 12px 14px; resize: vertical; }
+
+select.input {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%237a8882' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 36px;
+}
+
+select.input option { background: var(--surface-high); }
+
+/* ─── Buttons ─── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 0 16px;
+  height: 40px;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all 150ms;
+  white-space: nowrap;
+}
+
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.btn-primary:hover:not(:disabled) { background: var(--primary-dim); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--on-surface-muted);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--surface-high);
+  color: var(--on-surface);
+  border-color: rgba(255,255,255,0.1);
+}
+
+.btn-surface {
+  background: var(--surface-high);
+  color: var(--on-surface);
+}
+.btn-surface:hover:not(:disabled) { background: var(--surface-highest); }
+
+.btn-sm { height: 32px; padding: 0 12px; font-size: 0.8125rem; border-radius: 8px; }
+.btn-lg { height: 48px; padding: 0 24px; font-size: 0.9375rem; }
+.btn-pill { border-radius: 999px; }
+.btn-full { width: 100%; }
+
+/* ─── Chip / Badge ─── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--on-surface-muted);
+}
+.chip-active {
+  background: var(--primary-glow);
+  border-color: var(--border-accent);
+  color: var(--primary);
+}
+
+/* ─── Thread bubbles ─── */
+.bubble {
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+}
+.bubble-user { background: rgba(255,255,255,0.03); }
+.bubble-assistant { background: rgba(255,255,255,0.018); }
+.bubble-accent {
+  background: linear-gradient(160deg, rgba(91,168,160,0.09), rgba(91,168,160,0.03));
+  border-color: var(--border-accent);
+}
+
+/* ─── Status / feedback banners ─── */
+.banner {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.8125rem;
+  border: 1px solid;
+}
+.banner-error  { background: rgba(248,113,113,0.08); border-color: rgba(248,113,113,0.2); color: var(--danger); }
+.banner-success { background: rgba(91,168,160,0.08); border-color: var(--border-accent); color: var(--primary); }
+.banner-info   { background: rgba(255,255,255,0.04); border-color: var(--border); color: var(--on-surface-muted); }
+
+/* ─── Sidebar nav link ─── */
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--on-surface-muted);
+  transition: all 120ms;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+.nav-link:hover { color: var(--on-surface); background: var(--surface-high); }
+.nav-link.active { color: var(--primary); background: var(--primary-glow); }
+.nav-link .nav-icon { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.7; }
+.nav-link.active .nav-icon { opacity: 1; }
+
+/* ─── History item ─── */
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--on-surface-muted);
+  text-align: left;
+  transition: all 120ms;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-item:hover { color: var(--on-surface); background: var(--surface-high); }
+.history-item.active { color: var(--primary); background: var(--primary-glow); font-weight: 500; }
+.history-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--on-surface-subtle);
+  flex-shrink: 0;
+  transition: background 120ms;
+}
+.history-item.active .history-dot { background: var(--primary); }
+
+/* ─── Section label ─── */
+.section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--on-surface-subtle);
+  padding: 0 10px;
+}
+
+/* ─── Tab bar ─── */
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface-high);
+  border-radius: 10px;
+  padding: 3px;
+}
+.tab-btn {
+  flex: none;
+  padding: 5px 14px;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--on-surface-muted);
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: all 120ms;
+}
+.tab-btn:hover { color: var(--on-surface); }
+.tab-btn.active {
+  background: var(--surface-container);
+  color: var(--on-surface);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+/* ─── Icon button ─── */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--on-surface-muted);
+  cursor: pointer;
+  transition: all 120ms;
+}
+.icon-btn:hover { background: var(--surface-high); color: var(--on-surface); }
+
+/* ─── Page header ─── */
+.page-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+.page-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  color: var(--on-surface);
+  margin-top: 4px;
+}
+.page-subtitle {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--on-surface-muted);
+  margin-top: 6px;
+}
+
+/* ─── Ambient mesh background ─── */
+.app-bg {
+  background:
+    radial-gradient(ellipse 60% 40% at 10% 0%, rgba(91,168,160,0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 30% at 90% 100%, rgba(91,168,160,0.03) 0%, transparent 50%),
+    var(--surface);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Google-Docs-like Markdown preview
+   Used by <MarkdownPreview> inside OutputArtifactView in WorkspacePage.
+   Matches real Google Doc typography so the rendered preview looks
+   identical to what the user will see after publishing / pasting.
+   ────────────────────────────────────────────────────────────────── */
+.doc-preview {
+  color: var(--on-surface);
+  font-family: 'Inter', 'Arial', system-ui, sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  /* Google Doc-style left/right padding so the content feels like a real page */
+  padding: 0;
+}
+
+/* Title — matches Google Docs "Title" style */
+.doc-preview h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--on-surface);
+  margin: 4px 0 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  letter-spacing: -0.015em;
+}
+
+/* H2 — matches Google Docs "Heading 1" */
+.doc-preview h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--on-surface);
+  margin: 28px 0 10px 0;
+  letter-spacing: -0.005em;
+}
+
+/* H3 — matches Google Docs "Heading 2" */
+.doc-preview h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--on-surface);
+  margin: 20px 0 8px 0;
+}
+
+/* H4 / H5 / H6 */
+.doc-preview h4,
+.doc-preview h5,
+.doc-preview h6 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--on-surface);
+  margin: 16px 0 6px 0;
+}
+
+/* Paragraphs */
+.doc-preview p {
+  margin: 0 0 12px 0;
+  color: var(--on-surface);
+}
+.doc-preview p:last-child {
+  margin-bottom: 0;
+}
+
+/* Unordered lists */
+.doc-preview ul {
+  margin: 6px 0 14px 0;
+  padding-left: 24px;
+  list-style-type: disc;
+}
+.doc-preview ul ul {
+  list-style-type: circle;
+  margin: 4px 0;
+}
+.doc-preview ul ul ul {
+  list-style-type: square;
+}
+
+/* Ordered lists */
+.doc-preview ol {
+  margin: 6px 0 14px 0;
+  padding-left: 26px;
+  list-style-type: decimal;
+}
+
+/* List items */
+.doc-preview li {
+  margin: 4px 0;
+  color: var(--on-surface);
+}
+.doc-preview li > p {
+  margin: 0;
+}
+
+/* Bold and italic — both render as Google Docs does */
+.doc-preview strong,
+.doc-preview b {
+  font-weight: 700;
+  color: var(--on-surface);
+}
+.doc-preview em,
+.doc-preview i {
+  font-style: italic;
+}
+
+/* Inline code */
+.doc-preview code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.875em;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--primary);
+}
+
+/* Code blocks */
+.doc-preview pre {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 12px 0;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.doc-preview pre code {
+  background: transparent;
+  padding: 0;
+  color: var(--on-surface);
+}
+
+/* Blockquote — matches Google Docs "Quote" style */
+.doc-preview blockquote {
+  border-left: 4px solid var(--primary, #5ba8a0);
+  padding: 8px 16px;
+  margin: 14px 0;
+  font-style: italic;
+  color: var(--on-surface);
+  background: rgba(91, 168, 160, 0.04);
+  border-radius: 0 6px 6px 0;
+}
+.doc-preview blockquote p {
+  margin: 0;
+}
+
+/* Horizontal rule */
+.doc-preview hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 24px 0;
+  height: 0;
+}
+
+/* Tables — matches Google Docs table rendering */
+.doc-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 14px 0;
+  font-size: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.doc-preview thead {
+  background: rgba(255, 255, 255, 0.04);
+}
+.doc-preview th {
+  text-align: left;
+  padding: 10px 14px;
+  font-weight: 700;
+  color: var(--on-surface);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+.doc-preview th:last-child {
+  border-right: none;
+}
+.doc-preview td {
+  padding: 10px 14px;
+  color: var(--on-surface);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  vertical-align: top;
+}
+.doc-preview td:last-child {
+  border-right: none;
+}
+.doc-preview tr:last-child td {
+  border-bottom: none;
+}
+
+/* Links */
+.doc-preview a {
+  color: var(--primary, #5ba8a0);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.doc-preview a:hover {
+  text-decoration: none;
+}
+
+/* Images (should not appear in v6 docs, but guard anyway) */
+.doc-preview img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+
+/* Task lists (GFM) */
+.doc-preview input[type="checkbox"] {
+  margin-right: 8px;
+}
