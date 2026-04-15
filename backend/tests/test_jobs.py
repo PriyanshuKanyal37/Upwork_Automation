@@ -127,7 +127,7 @@ def test_job_duplicate_detected_for_other_user_and_continue_flow(client: TestCli
     assert decision_payload["job"]["status"] == "draft"
 
 
-def test_duplicate_decision_stop_keeps_duplicate_notified(client: TestClient) -> None:
+def test_duplicate_decision_stop_closes_job(client: TestClient) -> None:
     _register(client, "OwnerX")
     client.post(
         "/api/v1/jobs/intake",
@@ -150,7 +150,8 @@ def test_duplicate_decision_stop_keeps_duplicate_notified(client: TestClient) ->
     assert response.status_code == 200
     payload = response.json()
     assert payload["should_process"] is False
-    assert payload["job"]["status"] == "duplicate_notified"
+    assert payload["job"]["status"] == "closed"
+    assert payload["job"]["outcome"] == "not_sent"
 
 
 def test_duplicate_decision_not_required_for_non_duplicate_job(client: TestClient) -> None:

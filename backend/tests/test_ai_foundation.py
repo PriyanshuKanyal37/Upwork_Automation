@@ -15,7 +15,7 @@ def test_routing_defaults_match_blueprint_for_understanding_and_workflow() -> No
     assert understanding_route.primary_model == "gpt-5.4-mini"
     assert understanding_route.fallback_model == "claude-sonnet-4-5"
     assert workflow_route.primary_model == "claude-sonnet-4-6"
-    assert workflow_route.fallback_model == "gpt-5.4"
+    assert workflow_route.fallback_model is None
 
 
 def test_ai_exception_maps_status_code_from_error_code() -> None:

@@ -10,6 +10,7 @@ from app.application.ai.contracts import (
     ProviderName,
     ToolUse,
 )
+from app.application.ai.errors import AIException
 
 
 def _valid_workflow_json() -> dict[str, Any]:
@@ -71,16 +72,24 @@ class _FakeAgentProvider:
                 output_tokens=30,
                 latency_ms=12,
             )
-        workflow = json.dumps(_valid_workflow_json(), indent=2)
-        text = f"## WRITTEN PLAN\nUse webhook then HTTP request.\n\n## WORKFLOW JSON\n{workflow}"
+        workflow = _valid_workflow_json()
         return ProviderAgentTurnResult(
             provider=ProviderName.ANTHROPIC,
             model_name="claude-sonnet-4-6",
-            output_text=text,
-            tool_uses=[],
-            stop_reason="end_turn",
+            output_text=None,
+            tool_uses=[
+                ToolUse(
+                    id="toolu_2",
+                    name="finalize_workflow",
+                    input={
+                        "workflow_json": workflow,
+                        "workflow_explanation": "Use webhook then HTTP request.",
+                    },
+                )
+            ],
+            stop_reason="tool_use",
             input_tokens=220,
-            output_tokens=410,
+            output_tokens=120,
             latency_ms=18,
         )
 
@@ -128,23 +137,21 @@ def test_n8n_agent_tool_loop_end_turn_returns_payload() -> None:
     assert provider.iteration == 2
     usage = payload.metadata.get("usage", {})
     assert usage["input_tokens"] == 380
-    assert usage["output_tokens"] == 440
+    assert usage["output_tokens"] == 150
     assert isinstance(payload.metadata.get("agent_trace"), list)
 
 
-def test_n8n_agent_falls_back_to_single_turn_after_iteration_limit() -> None:
+def test_n8n_agent_raises_after_iteration_limit_when_not_finalized() -> None:
     provider = _FallbackOnlyProvider()
-    payload = asyncio.run(
-        run_n8n_agent(
-            job_context={"job_markdown": "Need n8n scheduled reporting workflow."},
-            provider=provider,  # type: ignore[arg-type]
-            max_iterations=1,
-        )
-    )
 
-    assert payload.artifact_type == ArtifactType.WORKFLOW
-    assert isinstance(payload.content_json, dict)
-    assert payload.metadata["agent_mode"] == "fallback_single_turn"
-    usage = payload.metadata.get("usage", {})
-    assert usage["input_tokens"] == 120
-    assert usage["output_tokens"] == 240
+    try:
+        asyncio.run(
+            run_n8n_agent(
+                job_context={"job_markdown": "Need n8n scheduled reporting workflow."},
+                provider=provider,  # type: ignore[arg-type]
+                max_iterations=1,
+            )
+        )
+        raise AssertionError("Expected AIException for non-finalized workflow")
+    except AIException as exc:
+        assert exc.code == "invalid_output"

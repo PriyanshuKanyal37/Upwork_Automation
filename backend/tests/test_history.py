@@ -28,11 +28,11 @@ def test_jobs_list_and_filters(client: TestClient) -> None:
 
     status_update = client.patch(
         f"/api/v1/jobs/{job_a}/status-outcome",
-        json={"status": "ready", "outcome": "replied"},
+        json={"status": "ready", "outcome": "hired"},
     )
     assert status_update.status_code == 200
     assert status_update.json()["job"]["status"] == "ready"
-    assert status_update.json()["job"]["outcome"] == "replied"
+    assert status_update.json()["job"]["outcome"] == "hired"
 
     submission_update = client.patch(
         f"/api/v1/jobs/{job_a}/submission",
@@ -52,10 +52,10 @@ def test_jobs_list_and_filters(client: TestClient) -> None:
     assert ready_jobs.json()["count"] == 1
     assert ready_jobs.json()["jobs"][0]["id"] == job_a
 
-    replied_jobs = client.get("/api/v1/jobs?outcome=replied")
-    assert replied_jobs.status_code == 200
-    assert replied_jobs.json()["count"] == 1
-    assert replied_jobs.json()["jobs"][0]["id"] == job_a
+    hired_jobs = client.get("/api/v1/jobs?outcome=hired")
+    assert hired_jobs.status_code == 200
+    assert hired_jobs.json()["count"] == 1
+    assert hired_jobs.json()["jobs"][0]["id"] == job_a
 
     submitted_jobs = client.get("/api/v1/jobs?is_submitted_to_upwork=true")
     assert submitted_jobs.status_code == 200
