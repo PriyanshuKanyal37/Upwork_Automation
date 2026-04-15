@@ -46,7 +46,9 @@ def _set_session_cookie(response: Response, token: str) -> None:
         expires=datetime.now(UTC) + timedelta(seconds=max_age),
         httponly=True,
         secure=settings.auth_cookie_secure,
-        samesite="lax",
+        # Cross-origin frontend/backend deployment requires SameSite=None for
+        # browser fetch/XHR requests with credentials.
+        samesite="none",
         path="/",
     )
 
@@ -108,4 +110,3 @@ async def update_me(
     await session.commit()
     await session.refresh(current_user)
     return AuthResponse(user=UserResponse(**serialize_user(current_user)))
-
