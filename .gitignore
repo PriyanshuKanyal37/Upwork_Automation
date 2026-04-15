@@ -52,15 +52,15 @@ pnpm-debug.log*
 .phase0_summary.json
 2026-*.txt
 
-# Local scratch / notes (not meant for repo)
-files.txt
-project_files.txt
-project_files_utf8.txt
-typography.txt
-test.json
-AUDIT_REPORT.md
-BUGS_REMAINING.md
-All_Docs/
-UI_suggestion/
-output/
-temp/
+# Local scratch / notes (not meant for repo) — anchored to root only
+/files.txt
+/project_files.txt
+/project_files_utf8.txt
+/typography.txt
+/test.json
+/AUDIT_REPORT.md
+/BUGS_REMAINING.md
+/All_Docs/
+/UI_suggestion/
+/output/
+/temp/
