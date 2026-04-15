@@ -128,9 +128,22 @@ async def update_job_status_and_outcome(
     job = await get_job_for_user(session=session, user_id=user_id, job_id=job_id)
     previous_status = job.status
     if status is not None:
-        job.status = _normalize_status(status)
+        normalized_status = _normalize_status(status)
+        job.status = normalized_status
+        if normalized_status == "sent":
+            job.is_submitted_to_upwork = True
+            if job.submitted_at is None:
+                job.submitted_at = datetime.now(UTC)
     if outcome is not None:
-        job.outcome = _normalize_outcome(outcome)
+        normalized_outcome = _normalize_outcome(outcome)
+        job.outcome = normalized_outcome
+        if normalized_outcome == "sent":
+            job.is_submitted_to_upwork = True
+            if job.submitted_at is None:
+                job.submitted_at = datetime.now(UTC)
+        elif normalized_outcome == "not_sent":
+            job.is_submitted_to_upwork = False
+            job.submitted_at = None
     await session.commit()
     await session.refresh(job)
     if status is not None and previous_status != job.status:

@@ -133,6 +133,44 @@ def test_job_outcome_not_sent_aliases(client: TestClient) -> None:
     assert hyphen_variant.json()["job"]["outcome"] == "not_sent"
 
 
+def test_job_outcome_sent_sets_submission_flags(client: TestClient) -> None:
+    _register(client, "HistoryUserE")
+    job_id = _create_job(client)
+
+    sent_update = client.patch(
+        f"/api/v1/jobs/{job_id}/status-outcome",
+        json={"outcome": "sent"},
+    )
+    assert sent_update.status_code == 200
+    job_payload = sent_update.json()["job"]
+    assert job_payload["outcome"] == "sent"
+    assert job_payload["is_submitted_to_upwork"] is True
+    assert job_payload["submitted_at"] is not None
+
+
+def test_job_outcome_not_sent_clears_submission_flags(client: TestClient) -> None:
+    _register(client, "HistoryUserF")
+    job_id = _create_job(client)
+
+    initial_submission = client.patch(
+        f"/api/v1/jobs/{job_id}/submission",
+        json={"is_submitted_to_upwork": True},
+    )
+    assert initial_submission.status_code == 200
+    assert initial_submission.json()["job"]["is_submitted_to_upwork"] is True
+    assert initial_submission.json()["job"]["submitted_at"] is not None
+
+    unsent_update = client.patch(
+        f"/api/v1/jobs/{job_id}/status-outcome",
+        json={"outcome": "not_sent"},
+    )
+    assert unsent_update.status_code == 200
+    job_payload = unsent_update.json()["job"]
+    assert job_payload["outcome"] == "not_sent"
+    assert job_payload["is_submitted_to_upwork"] is False
+    assert job_payload["submitted_at"] is None
+
+
 def test_jobs_history_requires_auth(client: TestClient) -> None:
     response = client.get("/api/v1/jobs")
     assert response.status_code == 401

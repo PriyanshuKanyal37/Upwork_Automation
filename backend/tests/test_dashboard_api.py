@@ -64,6 +64,23 @@ async def _seed_unsent_job(*, user_id: str) -> None:
         await session.commit()
 
 
+async def _seed_legacy_sent_outcome_job(*, user_id: str) -> None:
+    async with SessionLocal() as session:
+        user_uuid = UUID(user_id)
+        now = datetime.now(UTC)
+        job = Job(
+            user_id=user_uuid,
+            job_url=f"https://upwork.com/jobs/~{uuid4().hex}",
+            status="ready",
+            is_submitted_to_upwork=False,
+            outcome="sent",
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(job)
+        await session.commit()
+
+
 async def _seed_run_cost(*, user_id: str, cost_usd: Decimal) -> None:
     async with SessionLocal() as session:
         user_uuid = UUID(user_id)
@@ -157,9 +174,22 @@ def test_jobs_dashboard_window_day_filters_submissions(client: TestClient) -> No
     assert month_payload["current_user"]["proposals_sent_in_window"] == 2
 
 
+def test_jobs_dashboard_counts_legacy_sent_outcome_rows(client: TestClient) -> None:
+    user_id, email, password = _register(client, "DashLegacySent")
+
+    asyncio.run(_seed_legacy_sent_outcome_job(user_id=user_id))
+
+    _login(client, email, password)
+
+    response = client.get("/api/v1/dashboard/jobs?window=week")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["current_user"]["proposals_sent_in_window"] == 1
+    assert payload["current_user"]["total_jobs_sent_all_time"] == 1
+
+
 def test_jobs_dashboard_rejects_invalid_window(client: TestClient) -> None:
     _, email, password = _register(client, "DashInvalidWindow")
     _login(client, email, password)
     response = client.get("/api/v1/dashboard/jobs?window=year")
     assert response.status_code == 422
-

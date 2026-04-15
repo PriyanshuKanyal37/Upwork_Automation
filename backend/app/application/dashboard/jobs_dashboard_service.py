@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.database.models.job import Job
@@ -56,8 +56,9 @@ async def get_jobs_dashboard_summary(
     window_start = now - timedelta(days=window_days)
 
     # submitted_at is the source-of-truth; fall back to created_at for old rows.
+    # Legacy compatibility: treat outcome='sent' as submitted when flag was not synced.
     submit_time_expr = func.coalesce(Job.submitted_at, Job.created_at)
-    submitted_expr = Job.is_submitted_to_upwork.is_(True)
+    submitted_expr = or_(Job.is_submitted_to_upwork.is_(True), Job.outcome == "sent")
     submitted_in_window_expr = and_(submitted_expr, submit_time_expr >= window_start)
 
     jobs_stats_subquery = (
