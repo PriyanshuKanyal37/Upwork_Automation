@@ -49,12 +49,16 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
   }
 
   if (response.status === 401) {
-    window.localStorage.removeItem('ladderjobs.hasSession')
-    window.localStorage.removeItem('ladderjobs.hasProfile')
-    if (window.location.pathname !== '/auth') {
-      window.location.href = '/auth'
+    const isAuthMutation = path === '/api/v1/auth/login' || path === '/api/v1/auth/register'
+    if (!isAuthMutation) {
+      window.localStorage.removeItem('ladderjobs.hasSession')
+      window.localStorage.removeItem('ladderjobs.hasProfile')
+      if (window.location.pathname !== '/auth') {
+        window.location.href = '/auth'
+      }
+      throw new ApiRequestError('Session expired. Please log in again.', 401, payload)
     }
-    throw new ApiRequestError('Session expired. Please log in again.', 401, payload)
+    // Login/register 401 = wrong credentials — fall through to generic error handler
   }
 
   if (!response.ok) {
