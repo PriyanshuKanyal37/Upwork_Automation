@@ -39,6 +39,7 @@ class AuthResponse(BaseModel):
 
 def _set_session_cookie(response: Response, token: str) -> None:
     max_age = settings.auth_session_days * 24 * 60 * 60
+    same_site = "none" if settings.auth_cookie_secure else "lax"
     response.set_cookie(
         key=settings.auth_cookie_name,
         value=token,
@@ -46,9 +47,9 @@ def _set_session_cookie(response: Response, token: str) -> None:
         expires=datetime.now(UTC) + timedelta(seconds=max_age),
         httponly=True,
         secure=settings.auth_cookie_secure,
-        # Cross-origin frontend/backend deployment requires SameSite=None for
-        # browser fetch/XHR requests with credentials.
-        samesite="none",
+        # Cross-origin HTTPS deployments need SameSite=None, but browsers reject
+        # SameSite=None cookies unless Secure is also set.
+        samesite=same_site,
         path="/",
     )
 

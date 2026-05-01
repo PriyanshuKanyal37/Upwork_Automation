@@ -22,6 +22,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "lxml" },
     { name = "markdown-it-py" },
+    { name = "merm" },
     { name = "pwdlib", extra = ["argon2"] },
     { name = "pydantic-settings" },
     { name = "pyjwt" },
@@ -51,6 +52,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=0.2.0,<1.0.0" },
     { name = "lxml", specifier = ">=5.2.0,<6.0.0" },
     { name = "markdown-it-py", specifier = ">=3.0.0,<4.0.0" },
+    { name = "merm", specifier = ">=0.1.4" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0,<2.0.0" },
     { name = "pwdlib", extras = ["argon2"], specifier = ">=0.2.1,<1.0.0" },
     { name = "pydantic-settings", specifier = ">=2.8.0,<3.0.0" },
@@ -1003,6 +1005,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba", size = 8729, upload-time = "2022-08-14T12:40:10.846Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
+]
+
+[[package]]
+name = "merm"
+version = "0.1.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/f2/6a59150075e6011f1e9caa3341da154fb92d942e02f7ebd8fb4a01aa751a/merm-0.1.4.tar.gz", hash = "sha256:155e0cfaae83659b37a0ec305942ed1603f642b7984e207b34d30f16a3802bc8", size = 812817, upload-time = "2026-03-25T14:17:42.024Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/3b/cbdde70112f681d569a90737894dd60cfdbaa47f683f05ef30367a5a2921/merm-0.1.4-py3-none-any.whl", hash = "sha256:09d4090399336aa330aa93d011144515a250021501c507a9112bf75bb2554747", size = 158244, upload-time = "2026-03-25T14:17:40.346Z" },
 ]
 
 [[package]]

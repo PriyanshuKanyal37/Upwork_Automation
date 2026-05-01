@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from datetime import UTC, datetime
 import re
 from typing import Any
@@ -9,24 +8,22 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from merm import ParseError, parse_flowchart, render_to_png
+
+from app.application.ai.contracts import ProviderGenerateRequest, ProviderName
 from app.application.connector.service import get_connector_for_user
 from app.application.job.service import get_job_for_user
-from app.application.output.diagram_models import DiagramConnection, DiagramSpec
-from app.application.output.diagram_quality_validator import validate_diagram_quality
-from app.application.output.diagram_renderer import convert_svg_to_png, render_diagram_svg
-from app.application.output.diagram_spec_service import build_deterministic_diagram_spec, build_diagram_spec
-from app.infrastructure.config.settings import get_settings
+from app.infrastructure.ai.providers.factory import build_provider_adapter
 from app.infrastructure.database.models.job_output import JobOutput
 from app.infrastructure.errors.exceptions import AppException
 from app.infrastructure.integrations.google_docs_client import GoogleDocsClient
 from app.infrastructure.integrations.google_oauth import resolve_google_access_token
 
 _FLOWCHART_ARTIFACT_TYPE = "doc_flowchart"
-_FLOWCHART_MAX_ATTEMPTS = 3
+_MERMAID_MODEL = "claude-sonnet-4-6"
+_MERMAID_MAX_RETRIES = 1
 
-
-def _clamp(value: int, minimum: int, maximum: int) -> int:
-    return max(minimum, min(maximum, value))
+_MERMAID_CODE_FENCE_PATTERN = re.compile(r"```(?:mermaid)?\s*|\s*```", re.IGNORECASE | re.MULTILINE)
 
 
 def _sanitize_optional_text(value: str | None) -> str | None:
@@ -49,37 +46,6 @@ def _sanitize_optional_url(value: str | None) -> str | None:
             message="Google doc URL exceeds maximum allowed length",
         )
     return stripped
-
-
-def _normalize_connection_style(connection_style: str | None) -> str:
-    lowered = (connection_style or "").strip().lower()
-    if lowered in {"clean", "orthogonal", "curved"}:
-        return lowered
-    return "clean"
-
-
-def _derive_canvas_size(
-    *,
-    spec: DiagramSpec,
-    max_width: int,
-    max_height: int,
-) -> tuple[int, int]:
-    step_count = max(1, len(spec.steps))
-    columns = (step_count + 1) // 2 if step_count >= 6 else step_count
-
-    # Keep diagrams readable in inline UI previews while staying wide enough
-    # for Google Docs embedding.
-    base_width = 220 + (columns * 250)
-    title_bonus = min(220, max(0, len(spec.title) - 44) * 6)
-    width = _clamp(base_width + title_bonus, 1200, max_width)
-
-    has_feedback = any(conn.edge_type == "feedback" for conn in spec.connections)
-    base_height = 920 if step_count >= 6 else 760
-    if has_feedback:
-        base_height += 80
-    height = _clamp(base_height, 700, max_height)
-
-    return width, height
 
 
 async def _find_job_output(*, session: AsyncSession, job_id: UUID) -> JobOutput | None:
@@ -285,6 +251,239 @@ async def regenerate_single_output(
     return output
 
 
+def _extract_mermaid_code(llm_output: str) -> str:
+    stripped = _MERMAID_CODE_FENCE_PATTERN.sub("", llm_output.strip()).strip()
+    if not stripped:
+        raise AppException(
+            status_code=422,
+            code="mermaid_extraction_empty",
+            message="LLM did not return any Mermaid diagram text",
+        )
+    return stripped
+
+
+def _extract_key_points(markdown: str, max_points: int = 15) -> list[str]:
+    points: list[str] = []
+    seen: set[str] = set()
+    for line in markdown.splitlines():
+        stripped = line.strip()
+        if not stripped or len(stripped) < 5:
+            continue
+        cleaned = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s+", "", stripped)
+        cleaned = re.sub(r"^#{1,6}\s+", "", cleaned)
+        cleaned = re.sub(r"\*\*|__|\*|`", "", cleaned)
+        cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+        cleaned = " ".join(cleaned.split())
+        if len(cleaned) < 5:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        points.append(cleaned)
+        if len(points) >= max_points:
+            break
+    return points
+
+
+def _build_deterministic_mermaid(
+    *,
+    points: list[str],
+    title: str,
+    instruction: str | None,
+) -> str:
+    if len(points) < 3:
+        points = [
+            "Ingest and validate inputs",
+            "Process and transform data",
+            "Deliver outputs and notify",
+            "Monitor and iterate",
+        ]
+
+    n = len(points)
+    lines: list[str] = ["flowchart TD", ""]
+
+    # Small diagrams (3-5 nodes): flat flow, no subgraphs
+    if n <= 5:
+        for i, pt in enumerate(points):
+            node_id = f"n{i}"
+            lines.append(f'    {node_id}["{pt}"]')
+        for i in range(n - 1):
+            lines.append(f"    n{i} --> n{i + 1}")
+        if n == 5:
+            lines.append(f"    n2 --> n4")
+        instruction_text = instruction.strip() if instruction and instruction.strip() else ""
+        instruction_note = f" ({instruction_text})" if instruction_text else ""
+        prefix = [f"%% {title}{instruction_note}", ""]
+        return "\n".join(prefix + lines)
+
+    # Larger diagrams: group into subgraphs of 2-4 nodes each
+    # Determine chunk sizes to avoid tiny leftover chunks
+    if n <= 8:
+        chunk_sizes = [n // 2, n - n // 2]
+    elif n <= 12:
+        chunk_sizes = [n // 3, n // 3, n - 2 * (n // 3)]
+    else:
+        chunk_sizes = [4, 4, 4, n - 12] if n >= 16 else [n // 4] * 3 + [n - 3 * (n // 4)]
+
+    subgraph_labels_map = {
+        0: "Input & Discovery",
+        1: "Processing & Logic",
+        2: "Integration & Handoff",
+        3: "Delivery & Monitoring",
+    }
+
+    node_counter = 0
+    prev_end_id: str | None = None
+    chunk_start = 0
+
+    for sg_idx, size in enumerate([s for s in chunk_sizes if s > 0]):
+        chunk = points[chunk_start : chunk_start + size]
+        chunk_start += size
+        if not chunk:
+            continue
+
+        label = subgraph_labels_map.get(sg_idx, f"Phase {sg_idx + 1}")
+        lines.append(f'    subgraph sg{sg_idx}["{label}"]')
+
+        chunk_ids: list[str] = []
+        for pt in chunk:
+            node_id = f"n{node_counter}"
+            node_counter += 1
+            lines.append(f'        {node_id}["{pt}"]')
+            chunk_ids.append(node_id)
+
+        for i in range(len(chunk_ids) - 1):
+            lines.append(f"        {chunk_ids[i]} --> {chunk_ids[i + 1]}")
+
+        if prev_end_id is not None and chunk_ids:
+            lines.append(f"    {prev_end_id} --> {chunk_ids[0]}")
+
+        prev_end_id = chunk_ids[-1] if chunk_ids else prev_end_id
+        lines.append("    end")
+        lines.append("")
+
+    # Extra cross-subgraph connections for non-linear feel
+    if node_counter >= 8:
+        lines.append(f"    n2 -.-> n{node_counter - 2}")
+    if node_counter >= 6:
+        lines.append(f"    n0 -.-> n{node_counter - 1}")
+
+    instruction_text = instruction.strip() if instruction and instruction.strip() else ""
+    instruction_note = f" ({instruction_text})" if instruction_text else ""
+
+    prefix = [f"%% {title}{instruction_note}", ""]
+    return "\n".join(prefix + lines)
+
+
+async def _generate_mermaid_flowchart(
+    *,
+    prompt: str,
+    retry_count: int = 0,
+) -> tuple[str, str, str, int, int]:
+    adapter = build_provider_adapter(ProviderName.ANTHROPIC)
+    request = ProviderGenerateRequest(
+        prompt=prompt,
+        system_prompt="Return ONLY a fenced Mermaid code block. No other text.",
+        model_name=_MERMAID_MODEL,
+        temperature=0.2,
+        max_output_tokens=4000,
+        metadata={"task": "doc_flowchart_mermaid"},
+    )
+    result = await adapter.generate(request)
+
+    raw_output = result.output_text or ""
+    mermaid_code = _extract_mermaid_code(raw_output)
+
+    try:
+        parse_flowchart(mermaid_code)
+    except ParseError as parse_error:
+        if retry_count >= _MERMAID_MAX_RETRIES:
+            raise AppException(
+                status_code=422,
+                code="mermaid_syntax_error",
+                message=f"Mermaid syntax is still invalid after {retry_count + 1} attempts",
+                details={"parse_error": str(parse_error), "mermaid_preview": mermaid_code[:500]},
+            ) from parse_error
+        retry_prompt = (
+            f"{prompt}\n\n"
+            "## PREVIOUS ATTEMPT HAD A SYNTAX ERROR\n"
+            f"Error: {parse_error}\n"
+            "Fix the error and return ONLY the corrected Mermaid code block. "
+            "Double-check: no backticks in labels, no semicolons, all labels double-quoted."
+        )
+        return await _generate_mermaid_flowchart(prompt=retry_prompt, retry_count=retry_count + 1)
+
+    return mermaid_code, result.model_name, result.provider.value, result.input_tokens, result.output_tokens
+
+
+def _build_llm_flowchart_prompt(
+    *,
+    source_text: str,
+    title: str,
+    instruction: str | None,
+    connection_style: str | None,
+) -> str:
+    # Truncate source to keep context reasonable (roughly 2500 words)
+    words = source_text.split()
+    if len(words) > 2500:
+        source_text = " ".join(words[:2500]) + "\n\n[...content truncated...]"
+
+    conn_hint = ""
+    if connection_style == "curved":
+        conn_hint = "- Use curved/floating connections between cross-phase nodes where logical\n"
+    elif connection_style == "orthogonal":
+        conn_hint = "- Use orthogonal (horizontal + vertical) connections between subgraphs\n"
+    else:
+        conn_hint = "- Use clean, direct connections between nodes\n"
+
+    instruction_block = ""
+    if instruction and instruction.strip():
+        instruction_block = f"\n## User Instruction\n{instruction.strip()}\n"
+
+    return (
+        "Generate a Mermaid flowchart diagram from this document.\n\n"
+        f"## Document\nTitle: {title}\n\n{source_text}\n\n"
+        "## Requirements\n"
+        "- Generate exactly 6-12 nodes total (never fewer than 6)\n"
+        "- Use flowchart TD (top-down) orientation\n"
+        "- Group related steps into 2-4 labeled subgraphs with descriptive names derived from the document\n"
+        "- Include branching (diamond decisions) and parallel flows where the document describes alternatives or conditions\n"
+        "- Do NOT produce a simple linear chain — add at least one branch or parallel path\n"
+        "- Each node label must use specific terminology from the document, not generic filler like \"Analyze\" or \"Design\"\n"
+        "- Keep labels 4-9 words, double-quoted, no backticks, no semicolons, no special characters\n"
+        f"{conn_hint}"
+        f"{instruction_block}"
+        "Return ONLY a fenced Mermaid code block. No other text."
+    )
+
+
+async def _generate_llm_flowchart(
+    *,
+    source_text: str,
+    title: str,
+    instruction: str | None,
+    connection_style: str | None,
+) -> tuple[str, str, str, int, int]:
+    prompt = _build_llm_flowchart_prompt(
+        source_text=source_text,
+        title=title,
+        instruction=instruction,
+        connection_style=connection_style,
+    )
+    try:
+        return await _generate_mermaid_flowchart(prompt=prompt)
+    except AppException:
+        # Fall back to deterministic builder on LLM failure
+        points = _extract_key_points(source_text)
+        mermaid_code = _build_deterministic_mermaid(
+            points=points,
+            title=title,
+            instruction=instruction,
+        )
+        return mermaid_code, _MERMAID_MODEL, "anthropic", 0, 0
+
+
 async def generate_doc_flowchart_for_user(
     *,
     session: AsyncSession,
@@ -296,7 +495,9 @@ async def generate_doc_flowchart_for_user(
     await get_job_for_user(session=session, user_id=user_id, job_id=job_id)
     output = await _find_job_output(session=session, job_id=job_id)
     if output is None:
-        raise AppException(status_code=404, code="job_output_not_found", message="Job output not found")
+        output = JobOutput(job_id=job_id)
+        session.add(output)
+        await session.flush()
 
     markdown = (output.google_doc_markdown or "").strip()
     if not markdown:
@@ -307,7 +508,6 @@ async def generate_doc_flowchart_for_user(
         )
 
     section_match = _extract_flowchart_source_section(markdown)
-    section_kind = section_match[0] if section_match else None
     preferred_section_text = section_match[1] if section_match else None
 
     google_connector = await get_connector_for_user(
@@ -323,173 +523,60 @@ async def generate_doc_flowchart_for_user(
         )
 
     access_token = await resolve_google_access_token(google_connector.credential_ref)
-    settings = get_settings()
-    max_canvas_width = _clamp(settings.diagram_canvas_width, 1200, 2000)
-    max_canvas_height = _clamp(settings.diagram_canvas_height, 700, 1200)
-    selected_canvas_width = max_canvas_width
-    selected_canvas_height = max_canvas_height
-    normalized_connection_style = _normalize_connection_style(connection_style)
 
-    selected_spec_result = None
-    selected_quality = None
-    selected_render_mode = "ai"
-    validation_attempts: list[dict[str, Any]] = []
+    source_text = preferred_section_text if preferred_section_text else markdown
+    title = _extract_title(markdown)
 
-    for attempt in range(1, _FLOWCHART_MAX_ATTEMPTS + 1):
-        attempt_instruction = flowchart_instruction
-        if attempt > 1 and flowchart_instruction:
-            attempt_instruction = (
-                f"{flowchart_instruction.strip()}\n"
-                "Variant: keep connectors clean, avoid crossings, and preserve left-to-right readability."
-            )
-        spec_result = await build_diagram_spec(
-            markdown=markdown,
-            preferred_section_text=preferred_section_text,
-            preferred_section_kind=section_kind,
-            instruction=attempt_instruction,
-            connection_style=normalized_connection_style,
-        )
-        attempt_width, attempt_height = _derive_canvas_size(
-            spec=spec_result.spec,
-            max_width=max_canvas_width,
-            max_height=max_canvas_height,
-        )
-        quality = validate_diagram_quality(spec=spec_result.spec, width=attempt_width, height=attempt_height)
-        validation_attempts.append(
-            {
-                "attempt": attempt,
-                "spec_source": spec_result.source,
-                "model_name": spec_result.model_name,
-                "provider_name": spec_result.provider_name,
-                "canvas_width": attempt_width,
-                "canvas_height": attempt_height,
-                "quality_score": quality.score,
-                "quality_status": quality.status,
-                "validation_errors": list(quality.errors),
-                "validation_warnings": list(quality.warnings),
-            }
-        )
-        if quality.passed:
-            selected_spec_result = spec_result
-            selected_quality = quality
-            selected_render_mode = "ai" if spec_result.source.startswith("llm") else "fallback"
-            selected_canvas_width = attempt_width
-            selected_canvas_height = attempt_height
-            break
-
-    if selected_spec_result is None or selected_quality is None:
-        deterministic = build_deterministic_diagram_spec(
-            markdown=markdown,
-            preferred_section_text=preferred_section_text,
-            instruction=flowchart_instruction,
-            connection_style=normalized_connection_style,
-        )
-        deterministic.spec.layout_family = "roadmap_cards"
-        deterministic.spec.connection_style = "clean"
-        deterministic.spec.connections = [
-            DiagramConnection(
-                source_id=deterministic.spec.steps[idx].id,
-                target_id=deterministic.spec.steps[idx + 1].id,
-                edge_type="sequence",
-            )
-            for idx in range(len(deterministic.spec.steps) - 1)
-        ]
-        deterministic_width, deterministic_height = _derive_canvas_size(
-            spec=deterministic.spec,
-            max_width=max_canvas_width,
-            max_height=max_canvas_height,
-        )
-        deterministic_quality = validate_diagram_quality(
-            spec=deterministic.spec,
-            width=deterministic_width,
-            height=deterministic_height,
-        )
-        validation_attempts.append(
-            {
-                "attempt": "fallback",
-                "spec_source": deterministic.source,
-                "model_name": deterministic.model_name,
-                "provider_name": deterministic.provider_name,
-                "canvas_width": deterministic_width,
-                "canvas_height": deterministic_height,
-                "quality_score": deterministic_quality.score,
-                "quality_status": deterministic_quality.status,
-                "validation_errors": list(deterministic_quality.errors),
-                "validation_warnings": list(deterministic_quality.warnings),
-            }
-        )
-        if not deterministic_quality.passed:
-            deterministic.spec.steps = deterministic.spec.steps[:6]
-            deterministic.spec.connections = [
-                DiagramConnection(
-                    source_id=deterministic.spec.steps[idx].id,
-                    target_id=deterministic.spec.steps[idx + 1].id,
-                    edge_type="sequence",
-                )
-                for idx in range(len(deterministic.spec.steps) - 1)
-            ]
-            deterministic_width, deterministic_height = _derive_canvas_size(
-                spec=deterministic.spec,
-                max_width=max_canvas_width,
-                max_height=max_canvas_height,
-            )
-            deterministic_quality = validate_diagram_quality(
-                spec=deterministic.spec,
-                width=deterministic_width,
-                height=deterministic_height,
-            )
-        if not deterministic_quality.passed:
-            raise AppException(
-                status_code=422,
-                code="diagram_quality_failed",
-                message="Unable to produce a quality-safe diagram. Please regenerate with different instructions.",
-                details={
-                    "quality_score": deterministic_quality.score,
-                    "validation_errors": list(deterministic_quality.errors),
-                    "validation_attempts": validation_attempts,
-                },
-            )
-        selected_spec_result = deterministic
-        selected_quality = deterministic_quality
-        selected_render_mode = "fallback"
-        selected_canvas_width = deterministic_width
-        selected_canvas_height = deterministic_height
-
-    svg = render_diagram_svg(
-        spec=selected_spec_result.spec,
-        width=selected_canvas_width,
-        height=selected_canvas_height,
+    # Generate via LLM with deterministic fallback
+    mermaid_code, model_name, provider_name, input_tokens, output_tokens = await _generate_llm_flowchart(
+        source_text=source_text,
+        title=title,
+        instruction=flowchart_instruction,
+        connection_style=connection_style,
     )
-    image_bytes = await convert_svg_to_png(
-        svg_content=svg,
-        width=selected_canvas_width,
-        height=selected_canvas_height,
-    )
-    if not image_bytes.startswith(b"\x89PNG"):
+
+    try:
+        png_bytes = render_to_png(mermaid_code, theme="forest")
+    except ParseError as render_error:
+        raise AppException(
+            status_code=422,
+            code="mermaid_render_failed",
+            message="Mermaid diagram failed to render to PNG",
+            details={"parse_error": str(render_error)},
+        ) from render_error
+    except Exception as render_error:
+        raise AppException(
+            status_code=503,
+            code="diagram_render_failed",
+            message="Unexpected error rendering Mermaid diagram",
+            details={"error": str(render_error)},
+        ) from render_error
+
+    if not png_bytes.startswith(b"\x89PNG"):
         raise AppException(
             status_code=503,
             code="diagram_render_invalid_format",
             message="Diagram render did not produce a valid PNG image",
         )
-    if len(image_bytes) < 1024:
+    if len(png_bytes) < 1024:
         raise AppException(
             status_code=503,
             code="diagram_render_too_small",
             message="Diagram render output is unexpectedly small",
         )
+
     mime_type = "image/png"
     title = _extract_title(markdown)
 
     image_url = await GoogleDocsClient().upload_public_image(
         access_token=access_token,
-        image_bytes=image_bytes,
+        image_bytes=png_bytes,
         mime_type=mime_type,
         filename=f"{title[:80]}-flowchart.png",
     )
 
     words_sent = _word_count(preferred_section_text or markdown)
     request_id = f"diagram-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
-    inline_svg_data_url = "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode("ascii")
 
     _archive_existing_artifact_version(output=output, artifact_type=_FLOWCHART_ARTIFACT_TYPE)
     _upsert_extra_file_entry(
@@ -500,33 +587,36 @@ async def generate_doc_flowchart_for_user(
             "image_url": image_url,
             "mime_type": mime_type,
             "generated_at": datetime.now(UTC).isoformat(),
-            "source": "svg_template",
+            "source": "mermaid_merm",
             "request_id": request_id,
             "flowchart_instruction": _sanitize_optional_text(flowchart_instruction),
             "words_sent": words_sent,
             "estimated_credits_used": 0,
-            "estimated_free_weekly_images_at_this_size": None,
-            "render_engine": "svg_template",
-            "render_mode": selected_render_mode,
-            "layout_family": selected_spec_result.spec.layout_family,
-            "orientation": selected_spec_result.spec.orientation,
-            "creativity_level": selected_spec_result.spec.creativity_level,
-            "connection_style": selected_spec_result.spec.connection_style,
-            "model_name": selected_spec_result.model_name,
-            "provider_name": selected_spec_result.provider_name,
-            "spec_source": selected_spec_result.source,
-            "input_tokens": selected_spec_result.input_tokens,
-            "output_tokens": selected_spec_result.output_tokens,
-            "quality_score": selected_quality.score,
-            "quality_status": (
-                "fallback_passed"
-                if selected_render_mode == "fallback" and selected_quality.passed
-                else selected_quality.status
-            ),
-            "validation_errors": list(selected_quality.errors),
-            "validation_warnings": list(selected_quality.warnings),
-            "validation_attempts": validation_attempts,
-            "inline_svg_data_url": inline_svg_data_url,
+            "render_engine": "merm",
+            "render_mode": "mermaid",
+            "layout_family": "mermaid_auto",
+            "orientation": "mermaid_auto",
+            "creativity_level": "high",
+            "connection_style": _sanitize_optional_text(connection_style) or "mermaid_auto",
+            "model_name": model_name,
+            "provider_name": provider_name,
+            "spec_source": "llm_mermaid",
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "quality_score": 100,
+            "quality_status": "passed",
+            "validation_errors": [],
+            "validation_warnings": [],
+            "validation_attempts": [
+                {
+                    "attempt": 1,
+                    "spec_source": "llm_mermaid",
+                    "model_name": model_name,
+                    "provider_name": provider_name,
+                    "quality_score": 100,
+                    "quality_status": "mermaid_validated",
+                }
+            ],
         },
     )
     _append_edit_log(

@@ -83,10 +83,9 @@ function buildDiagramImageCandidates(diagram: JobOutput['doc_flowchart'] | null 
   const url = diagram.image_url
   const fileId = extractGoogleDriveFileId(url)
   const candidates = [
-    diagram.inline_svg_data_url || null,
     url,
-    driveThumbnailUrl(url),
     fileId ? `https://drive.google.com/uc?export=view&id=${fileId}` : null,
+    driveThumbnailUrl(url),
     driveDownloadUrl(url),
   ]
   return Array.from(new Set(candidates.filter((value): value is string => Boolean(value))))
@@ -1085,20 +1084,17 @@ export function WorkspacePage() {
                                       <span title="Words analyzed from the document context used to build the diagram">
                                         Words analyzed: <strong style={{ color: 'var(--on-surface)' }}>{output.doc_flowchart?.words_sent ?? 0}</strong>
                                       </span>
-                                      <span title="Horizontal layout family selected by the diagram generator">
-                                        Layout: <strong style={{ color: 'var(--on-surface)' }}>{output.doc_flowchart?.layout_family ?? 'roadmap_cards'}</strong>
+                                      <span title="AI model used to generate the diagram">
+                                        Model: <strong style={{ color: 'var(--on-surface)' }}>{output.doc_flowchart?.model_name ?? 'unknown'}</strong>
                                       </span>
-                                      <span title="Diagram orientation used for Google Docs embedding">
-                                        Orientation: <strong style={{ color: 'var(--on-surface)' }}>{output.doc_flowchart?.orientation ?? 'horizontal'}</strong>
+                                      <span title="Input tokens used for diagram generation">
+                                        Tokens in: <strong style={{ color: 'var(--on-surface)' }}>{output.doc_flowchart?.input_tokens ?? 0}</strong>
                                       </span>
-                                      <span title="Creativity level selected for the generated visual style">
-                                        Creativity: <strong style={{ color: 'var(--on-surface)' }}>{output.doc_flowchart?.creativity_level ?? 'medium'}</strong>
+                                      <span title="Output tokens from the LLM response">
+                                        Tokens out: <strong style={{ color: 'var(--on-surface)' }}>{output.doc_flowchart?.output_tokens ?? 0}</strong>
                                       </span>
-                                      <span title="Connection routing style used to render the flowchart">
-                                        Connections: <strong style={{ color: 'var(--on-surface)' }}>{output.doc_flowchart?.connection_style ?? 'clean'}</strong>
-                                      </span>
-                                      <span title="Quality score from deterministic diagram validator">
-                                        Quality: <strong style={{ color: 'var(--on-surface)' }}>{Math.round(output.doc_flowchart?.quality_score ?? 0)}</strong>
+                                      <span title="Rendering engine used">
+                                        Engine: <strong style={{ color: 'var(--on-surface)' }}>{output.doc_flowchart?.render_engine ?? 'mermaid'}</strong>
                                       </span>
                                     </div>
                                     {(output.doc_flowchart?.validation_errors?.length ?? 0) > 0 && (
@@ -1115,7 +1111,7 @@ export function WorkspacePage() {
                                     ) : output.doc_flowchart?.error ? (
                                       <p style={{ color: 'var(--danger)' }}>{output.doc_flowchart.error}</p>
                                     ) : (
-                                      <p>Generate a horizontal diagram from full document context: problem, approach, implementation, and solution flow.</p>
+                                      <p>Generate a Mermaid flowchart from document context: problem, approach, implementation, and solution flow.</p>
                                     )}
                                   </div>
                                 )}

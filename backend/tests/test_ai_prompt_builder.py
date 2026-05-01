@@ -91,3 +91,18 @@ def test_loom_prompt_enforces_core_flow_and_guardrails() -> None:
     assert "agency website walkthrough" in prompt.lower()
     assert "Agency website walkthrough: what to show" in prompt
     assert "No Loom/Doc duplication" in prompt
+
+
+def test_doc_prompt_requires_compact_napkin_visual_script() -> None:
+    built = build_prompt(
+        task=RouteTask.DOC,
+        context={"job_markdown": "Need n8n automation for CRM lead intake."},
+    )
+    prompt = built.user_prompt
+
+    assert built.prompt_version == "doc_v9"
+    assert "## 🧩 Napkin visual script" in prompt
+    assert "ALWAYS end the document with this exact H2" in prompt
+    assert "max 60 words" in prompt
+    assert "Napkin charges per word" in prompt
+    assert "no code fence, no Mermaid syntax" in prompt

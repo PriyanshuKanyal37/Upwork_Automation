@@ -1,4 +1,4 @@
-"""Universal Upwork proposal document prompt (doc_v8).
+"""Universal Upwork proposal document prompt (doc_v9).
 
 Design intent
 -------------
@@ -33,7 +33,7 @@ from typing import Any
 
 from app.application.ai.prompt.common import build_context_block
 
-PROMPT_VERSION = "doc_v8"
+PROMPT_VERSION = "doc_v9"
 
 _EXAMPLE_PATH = Path(__file__).resolve().parent / "skills_md" / "doc_example.md"
 
@@ -113,6 +113,7 @@ def build_user_prompt(context: dict[str, Any]) -> str:
         "ALWAYS mandatory regardless of user template:\n"
         "- <style_rules> (grounding, specificity, no invention, no dollar amounts)\n"
         "- <ambiguity_handling> (TBD placeholders, no fabricated facts)\n"
+        "- <napkin_visual_script> (final copy-paste node-flow block for Napkin AI)\n"
         "- <output_boundary> (no preamble, no postamble)\n"
         "When in doubt, prefer the user's template shape, but never fabricate "
         "facts to fill it.\n"
@@ -143,7 +144,11 @@ def build_user_prompt(context: dict[str, Any]) -> str:
         "8. Write '👉 Timeline & next step' as 1-2 sentences: rough duration "
         "(\"~3 weeks\", \"by Friday\", etc.) plus one clear call to action. "
         "NEVER mention money — the Upwork proposal card already shows the bid.\n"
-        "9. Stop immediately. Output nothing after the last sentence.\n"
+        "9. Write '🧩 Napkin visual script' as the final section. Make it a "
+        "compact node-flow block for Napkin AI: START/END markers, [node labels] "
+        "with ↓ and → connectors, max 60 words. See <napkin_visual_script> for "
+        "the exact format.\n"
+        "10. Stop immediately. Output nothing after the Napkin block.\n"
         "</execution_order>\n\n"
 
         # ─── SOURCE PRIORITY ────────────────────────────────────────────────
@@ -210,7 +215,11 @@ def build_user_prompt(context: dict[str, Any]) -> str:
         "## 📦 What you'll end up with    (markdown table, 2 columns)\n"
         "## 🛡 How I'll handle the tricky parts\n"
         "## ⚡ Why me    (one blockquote allowed here)\n"
-        "## 👉 Timeline & next step    (1-2 sentences, NO pricing)\n\n"
+        "## 👉 Timeline & next step    (1-2 sentences, NO pricing)\n"
+        "## 🧩 Napkin visual script    (one compact node-flow block for Napkin AI)\n\n"
+        "The Napkin section is ALWAYS included as the final section, even when "
+        "a user template is present. If the user template has its own closing "
+        "section, put Napkin visual script after it.\n\n"
         "The doc is weighted toward the work. 'How I'll solve it' + 'How I'll "
         "handle the tricky parts' together are roughly HALF the total word "
         "budget.\n"
@@ -221,8 +230,9 @@ def build_user_prompt(context: dict[str, Any]) -> str:
         "DEFAULT length discipline to use ONLY when the user template is "
         "silent on length. If the user template specifies word counts, follow "
         "those instead and ignore this block.\n\n"
-        "Total document: 380-570 words. Target ~460.\n"
-        "Absolute ceiling: 650 words.\n\n"
+        "Total document excluding Napkin section: 380-570 words. Target ~460.\n"
+        "Napkin visual script: max 60 words, node-flow format.\n"
+        "Absolute ceiling including Napkin section: 760 words.\n\n"
         "Per section (soft caps unless marked ABSOLUTE):\n"
         "- Title: 1 line\n"
         "- 🎯 The problem you're solving: 50-70 words, 3 bullets\n"
@@ -233,7 +243,8 @@ def build_user_prompt(context: dict[str, Any]) -> str:
         "- 🛡 How I'll handle the tricky parts: 60-90 words, 3-4 bullets "
         "(edge cases, quality safeguards)\n"
         "- ⚡ Why me: 50-70 words, 2-3 bullets + one blockquote\n"
-        "- 👉 Timeline & next step: 1-2 sentences, under 50 words, NO dollar amounts\n\n"
+        "- 👉 Timeline & next step: 1-2 sentences, under 50 words, NO dollar amounts\n"
+        "- 🧩 Napkin visual script: one node-flow block, max 60 words, arrow format\n\n"
         "If total exceeds ceiling: tighten '⚡ Why me' first, then '🎯 The "
         "problem you're solving'. NEVER cut '🧭 How I'll solve it' or '🛡 How "
         "I'll handle the tricky parts' — they are the whole point of the doc.\n\n"
@@ -285,7 +296,47 @@ def build_user_prompt(context: dict[str, Any]) -> str:
         "- 🛡 How I'll handle the tricky parts\n"
         "- ⚡ Why me\n"
         "- 👉 Timeline & next step\n"
+        "- 🧩 Napkin visual script\n"
         "</emoji_discipline>\n\n"
+
+        # ─── NAPKIN VISUAL SCRIPT ──────────────────────────────────────────
+        "<napkin_visual_script>\n"
+        "ALWAYS end the document with this exact H2:\n"
+        "## 🧩 Napkin visual script\n\n"
+        "Purpose: give the freelancer a compact node-flow block they can copy "
+        "into Napkin AI to generate a polished flowchart.\n\n"
+        "Write a node-flow diagram in plain text after the H2. Requirements:\n"
+        "- Format: each line is a node label like [Action + Tool] or a "
+        "connector (→ or ↓). Build a top-down flow.\n"
+        "- Start with START on its own line. End with END on its own line.\n"
+        "- 8-14 nodes total. Each node is a short label: 3-8 words naming a "
+        "specific tool, data object, or action from the job context.\n"
+        "- Max 60 words total. Napkin charges per word — every word must earn "
+        "its place.\n"
+        "- Show branching with → Yes / → No from decision nodes.\n"
+        "- No markdown formatting, no bullets, no bold, no code fence, no "
+        "Mermaid syntax. Just plain text nodes and arrows.\n"
+        "- Example (do not copy, adapt to job):\n"
+        "START\n"
+        "↓\n"
+        "[Typeform webhook captures lead]\n"
+        "↓\n"
+        "[n8n validates and deduplicates]\n"
+        "↓\n"
+        "[OpenAI classifies lead intent]\n"
+        "↓\n"
+        "[Qualified?] → No → [Archive in Google Sheets]\n"
+        "↓ Yes\n"
+        "[Slack notifies sales team]\n"
+        "↓\n"
+        "[Airtable logs full audit trail]\n"
+        "↓\n"
+        "END\n"
+        "- Every node label must reference a specific tool, system, or "
+        "deliverable from the job context. No generic labels.\n"
+        "- No TBD placeholders. If a tool is unconfirmed, describe the "
+        "action without naming a tool.\n"
+        "</napkin_visual_script>\n\n"
 
         # ─── VISUAL POLISH ──────────────────────────────────────────────────
         "<visual_polish>\n"
@@ -310,8 +361,8 @@ def build_user_prompt(context: dict[str, Any]) -> str:
         "<output_boundary>\n"
         "Begin your response on the first line with the H1 title "
         "(`# <project title>`). Do not write 'Here is the document', 'Based "
-        "on the context', or any preamble. After the last sentence of '👉 "
-        "Timeline & next step', output nothing further — no summary, no "
+        "on the context', or any preamble. After the final sentence of '🧩 "
+        "Napkin visual script', output nothing further — no summary, no "
         "signoff, no closing remark, no code fences.\n"
         "</output_boundary>\n\n"
 

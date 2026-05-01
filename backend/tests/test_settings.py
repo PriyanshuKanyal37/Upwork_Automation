@@ -1,6 +1,38 @@
 from app.infrastructure.config.settings import Settings
 
 
+def test_project_env_overrides_global_ai_provider_settings(monkeypatch, tmp_path) -> None:
+    from app.infrastructure.config import settings as settings_module
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "ANTHROPIC_BASE_URL=https://api.anthropic.com\n"
+        "ANTHROPIC_API_KEY=project-anthropic-key\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings_module, "_BACKEND_ENV_FILE", env_file)
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://api.deepseek.com/anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "global-anthropic-key")
+
+    settings = Settings(environment="development")
+
+    assert settings.anthropic_base_url == "https://api.anthropic.com"
+    assert settings.anthropic_api_key == "project-anthropic-key"
+
+
+def test_production_uses_process_ai_provider_settings(monkeypatch, tmp_path) -> None:
+    from app.infrastructure.config import settings as settings_module
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("ANTHROPIC_BASE_URL=https://api.anthropic.com\n", encoding="utf-8")
+    monkeypatch.setattr(settings_module, "_BACKEND_ENV_FILE", env_file)
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://production.example.com/anthropic")
+
+    settings = Settings(environment="production")
+
+    assert settings.anthropic_base_url == "https://production.example.com/anthropic"
+
+
 def test_database_url_normalizes_sslmode_for_asyncpg() -> None:
     settings = Settings(
         database_url=(

@@ -4,12 +4,12 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.application.output.diagram_models import DiagramConnection, DiagramSpec, DiagramStep
-from app.application.output.diagram_quality_validator import validate_diagram_quality
-from app.application.output.diagram_spec_service import DiagramSpecBuildResult
-from app.application.output.service import _extract_flowchart_source_section
-
-_FAKE_PNG_BYTES = b"\x89PNG\r\n\x1a\n" + (b"x" * 2048)
+from app.application.output.service import (
+    _build_deterministic_mermaid,
+    _extract_flowchart_source_section,
+    _extract_key_points,
+    _extract_mermaid_code,
+)
 
 
 def test_parser_prefers_flow_at_a_glance_section() -> None:
@@ -78,6 +78,77 @@ def test_parser_returns_none_without_supported_heading() -> None:
     assert _extract_flowchart_source_section(doc) is None
 
 
+def test_extract_key_points_from_bullets() -> None:
+    text = (
+        "- Phase 1 - analyze requirements and constraints\n"
+        "- Phase 2 - design solution architecture\n"
+        "- Phase 3 - implement core workflow\n"
+        "- Phase 4 - test and validate end to end\n"
+        "- Phase 5 - deploy and monitor production\n"
+    )
+    points = _extract_key_points(text)
+    assert len(points) == 5
+    assert "Phase 1" in points[0]
+    assert "Phase 5" in points[4]
+
+
+def test_extract_key_points_deduplicates() -> None:
+    text = (
+        "- Analyze requirements\n"
+        "- Analyze requirements\n"
+        "- Build workflow\n"
+    )
+    points = _extract_key_points(text)
+    assert len(points) == 2
+
+
+def test_extract_key_points_skips_short_lines() -> None:
+    text = "ok\n- This is a proper point with enough words\n- ab"
+    points = _extract_key_points(text)
+    assert len(points) == 1
+    assert "proper point" in points[0]
+
+
+def test_build_deterministic_mermaid_structure() -> None:
+    points = [
+        "Analyze project requirements",
+        "Design the solution approach",
+        "Implement the core workflow",
+        "Test and validate all components",
+        "Deploy to production environment",
+        "Monitor and iterate based on feedback",
+    ]
+    code = _build_deterministic_mermaid(points=points, title="Test Flow", instruction=None)
+    assert "flowchart TD" in code
+    assert '["Analyze project requirements"]' in code
+    assert '["Deploy to production environment"]' in code
+    assert "subgraph" in code
+
+
+def test_build_deterministic_mermaid_fallback() -> None:
+    points: list[str] = []
+    code = _build_deterministic_mermaid(points=points, title="Fallback", instruction=None)
+    assert "flowchart TD" in code
+    assert "Ingest and validate inputs" in code
+
+
+def test_extract_mermaid_code_strips_fences() -> None:
+    raw = '```mermaid\nflowchart LR\n    A["Start"] --> B["End"]\n```'
+    result = _extract_mermaid_code(raw)
+    assert result == 'flowchart LR\n    A["Start"] --> B["End"]'
+
+
+def test_extract_mermaid_code_strips_json_fence() -> None:
+    raw = '```\nflowchart TD\n    A --> B\n```'
+    result = _extract_mermaid_code(raw)
+    assert result == "flowchart TD\n    A --> B"
+
+
+def test_extract_mermaid_code_handles_no_fences() -> None:
+    result = _extract_mermaid_code("flowchart LR\n    A --> B")
+    assert result == "flowchart LR\n    A --> B"
+
+
 def _register(client: TestClient, name: str) -> None:
     email = f"{name.lower()}-{uuid4().hex[:8]}@example.com"
     response = client.post(
@@ -121,29 +192,8 @@ Client needs onboarding automation.
     return job_id
 
 
-def _make_spec(layout_family: str = "roadmap_cards") -> DiagramSpec:
-    steps = [
-        DiagramStep(id="s1", title="Analyze requirements", detail="Map goals and constraints"),
-        DiagramStep(id="s2", title="Design approach", detail="Pick tools and sequencing"),
-        DiagramStep(id="s3", title="Implement workflow", detail="Build and validate"),
-        DiagramStep(id="s4", title="Deliver and monitor", detail="Publish and track outcomes"),
-    ]
-    return DiagramSpec(
-        title="Automation Delivery Plan",
-        orientation="horizontal",
-        layout_family=layout_family,  # type: ignore[arg-type]
-        creativity_level="high",
-        steps=steps,
-        connections=[
-            DiagramConnection(source_id="s1", target_id="s2"),
-            DiagramConnection(source_id="s2", target_id="s3"),
-            DiagramConnection(source_id="s3", target_id="s4"),
-        ],
-    )
-
-
-def test_generate_doc_flowchart_on_demand(client: TestClient, monkeypatch) -> None:
-    _register(client, "FlowchartUser")
+def test_generate_doc_flowchart_end_to_end(client: TestClient, monkeypatch) -> None:
+    _register(client, "MermaidFlowUser")
     job_id = _create_job_with_doc(client)
 
     google_connector = client.post(
@@ -161,31 +211,32 @@ def test_generate_doc_flowchart_on_demand(client: TestClient, monkeypatch) -> No
     async def fake_resolve_google_access_token(_: str) -> str:
         return "google-access-token"
 
-    async def fake_build_diagram_spec(**kwargs) -> DiagramSpecBuildResult:
-        assert kwargs["markdown"]
-        assert kwargs["instruction"] == "Make it more implementation focused"
-        return DiagramSpecBuildResult(
-            spec=_make_spec("swimlane_process"),
-            source="llm",
-            input_tokens=123,
-            output_tokens=77,
-            model_name="gpt-test-model",
+    async def fake_generate_mermaid(*, prompt: str, retry_count: int = 0) -> tuple[str, str, str, int, int]:
+        return (
+            'flowchart TD\n'
+            '    subgraph sg0["Input & Discovery"]\n'
+            '        n0["Map source events and contracts"]\n'
+            '        n1["Validate input schemas"]\n'
+            '        n0 --> n1\n'
+            '    end\n'
+            '    subgraph sg1["Processing & Logic"]\n'
+            '        n2["Build validation pipeline"]\n'
+            '        n3["Implement dedup logic"]\n'
+            '        n2 --> n3\n'
+            '    end\n'
+            '    subgraph sg2["Delivery & Monitoring"]\n'
+            '        n4["Route records to targets"]\n'
+            '        n5["Send notifications"]\n'
+            '        n4 --> n5\n'
+            '    end\n'
+            '    n1 --> n2\n'
+            '    n3 --> n4\n'
+            '    n2 -.-> n5\n',
+            "claude-sonnet-4-6",
+            "anthropic",
+            850,
+            420,
         )
-
-    seen_dims: dict[str, tuple[int, int]] = {}
-
-    def fake_render_diagram_svg(*, spec: DiagramSpec, width: int = 1600, height: int = 1200) -> str:
-        assert spec.orientation == "horizontal"
-        assert 1200 <= width <= 1600
-        assert 700 <= height <= 1200
-        seen_dims["render"] = (width, height)
-        return "<svg>diagram</svg>"
-
-    async def fake_convert_svg_to_png(*, svg_content: str, width: int = 1600, height: int = 1200) -> bytes:
-        assert svg_content == "<svg>diagram</svg>"
-        assert seen_dims.get("render") == (width, height)
-        seen_dims["convert"] = (width, height)
-        return _FAKE_PNG_BYTES
 
     class FakeGoogleDocsClient:
         async def upload_public_image(
@@ -197,20 +248,18 @@ def test_generate_doc_flowchart_on_demand(client: TestClient, monkeypatch) -> No
             filename: str,
         ) -> str:
             assert access_token == "google-access-token"
-            assert image_bytes == _FAKE_PNG_BYTES
             assert mime_type == "image/png"
             assert filename.endswith("-flowchart.png")
-            return "https://drive.google.com/uc?export=view&id=img_123"
+            assert image_bytes.startswith(b"\x89PNG")
+            return "https://drive.google.com/uc?export=view&id=img_mermaid_1"
 
     monkeypatch.setattr(output_service, "resolve_google_access_token", fake_resolve_google_access_token)
-    monkeypatch.setattr(output_service, "build_diagram_spec", fake_build_diagram_spec)
-    monkeypatch.setattr(output_service, "render_diagram_svg", fake_render_diagram_svg)
-    monkeypatch.setattr(output_service, "convert_svg_to_png", fake_convert_svg_to_png)
     monkeypatch.setattr(output_service, "GoogleDocsClient", FakeGoogleDocsClient)
+    monkeypatch.setattr(output_service, "_generate_mermaid_flowchart", fake_generate_mermaid)
 
     response = client.post(
         f"/api/v1/jobs/{job_id}/outputs/doc-flowchart/generate",
-        json={"instruction": "Make it more implementation focused"},
+        json={"instruction": "Make it implementation focused"},
     )
     assert response.status_code == 200
     payload = response.json()
@@ -219,26 +268,16 @@ def test_generate_doc_flowchart_on_demand(client: TestClient, monkeypatch) -> No
     assert flowchart is not None
     assert flowchart["status"] == "ready"
     assert flowchart["image_url"].startswith("https://drive.google.com/uc?export=view&id=")
-    assert flowchart["layout_family"] == "swimlane_process"
-    assert flowchart["orientation"] == "horizontal"
-    assert flowchart["creativity_level"] == "high"
-    assert flowchart["model_name"] == "gpt-test-model"
-    assert flowchart["spec_source"] == "llm"
-    assert flowchart["input_tokens"] == 123
-    assert flowchart["output_tokens"] == 77
-    assert flowchart["estimated_credits_used"] == 0
-    assert flowchart["flowchart_instruction"] == "Make it more implementation focused"
-    assert flowchart["request_id"].startswith("diagram-")
-    assert flowchart["render_mode"] == "ai"
+    assert flowchart["render_engine"] == "merm"
+    assert flowchart["render_mode"] == "mermaid"
+    assert flowchart["spec_source"] == "llm_mermaid"
     assert flowchart["quality_status"] == "passed"
-    assert flowchart["quality_score"] >= 70
-    assert flowchart["connection_style"] == "clean"
-    assert flowchart["inline_svg_data_url"].startswith("data:image/svg+xml;base64,")
-    assert seen_dims.get("render") == seen_dims.get("convert")
+    assert flowchart["flowchart_instruction"] == "Make it implementation focused"
+    assert flowchart["request_id"].startswith("diagram-")
 
 
-def test_generate_doc_flowchart_archives_previous_version(client: TestClient, monkeypatch) -> None:
-    _register(client, "FlowchartArchiveUser")
+def test_generate_doc_flowchart_archives_previous(client: TestClient, monkeypatch) -> None:
+    _register(client, "MermaidArchiveUser")
     job_id = _create_job_with_doc(client)
 
     google_connector = client.post(
@@ -258,20 +297,25 @@ def test_generate_doc_flowchart_archives_previous_version(client: TestClient, mo
     async def fake_resolve_google_access_token(_: str) -> str:
         return "google-access-token"
 
-    async def fake_build_diagram_spec(**kwargs) -> DiagramSpecBuildResult:
-        return DiagramSpecBuildResult(
-            spec=_make_spec(),
-            source="fallback",
-            input_tokens=0,
-            output_tokens=0,
-            model_name=None,
+    async def fake_generate_mermaid(*, prompt: str, retry_count: int = 0) -> tuple[str, str, str, int, int]:
+        return (
+            'flowchart TD\n'
+            '    subgraph sg0["Phase 1"]\n'
+            '        n0["Step A"]\n'
+            '        n1["Step B"]\n'
+            '        n0 --> n1\n'
+            '    end\n'
+            '    subgraph sg1["Phase 2"]\n'
+            '        n2["Step C"]\n'
+            '        n3["Step D"]\n'
+            '        n2 --> n3\n'
+            '    end\n'
+            '    n1 --> n2\n',
+            "claude-sonnet-4-6",
+            "anthropic",
+            700,
+            350,
         )
-
-    def fake_render_diagram_svg(*, spec: DiagramSpec, width: int = 1600, height: int = 1200) -> str:
-        return "<svg>diagram</svg>"
-
-    async def fake_convert_svg_to_png(*, svg_content: str, width: int = 1600, height: int = 1200) -> bytes:
-        return _FAKE_PNG_BYTES
 
     class FakeGoogleDocsClient:
         async def upload_public_image(
@@ -286,10 +330,8 @@ def test_generate_doc_flowchart_archives_previous_version(client: TestClient, mo
             return f"https://drive.google.com/uc?export=view&id=img_{counter['n']}"
 
     monkeypatch.setattr(output_service, "resolve_google_access_token", fake_resolve_google_access_token)
-    monkeypatch.setattr(output_service, "build_diagram_spec", fake_build_diagram_spec)
-    monkeypatch.setattr(output_service, "render_diagram_svg", fake_render_diagram_svg)
-    monkeypatch.setattr(output_service, "convert_svg_to_png", fake_convert_svg_to_png)
     monkeypatch.setattr(output_service, "GoogleDocsClient", FakeGoogleDocsClient)
+    monkeypatch.setattr(output_service, "_generate_mermaid_flowchart", fake_generate_mermaid)
 
     first = client.post(
         f"/api/v1/jobs/{job_id}/outputs/doc-flowchart/generate",
@@ -317,18 +359,24 @@ def test_generate_doc_flowchart_archives_previous_version(client: TestClient, mo
     assert versions[0]["payload"]["flowchart_instruction"] == "First diagram"
 
 
-def test_quality_validator_passes_clean_horizontal_spec() -> None:
-    result = validate_diagram_quality(spec=_make_spec("roadmap_cards"), width=1600, height=1200)
-    assert result.passed is True
-    assert result.status == "passed"
-    assert result.score >= 70
+def test_generate_doc_flowchart_rejects_missing_doc(client: TestClient) -> None:
+    _register(client, "MermaidNoDocUser")
+    intake = client.post(
+        "/api/v1/jobs/intake",
+        json={"job_url": f"https://www.upwork.com/jobs/flow~{uuid4().hex}"},
+    )
+    assert intake.status_code == 201
+    job_id = intake.json()["job"]["id"]
 
+    manual = client.post(
+        f"/api/v1/jobs/{job_id}/manual-markdown",
+        json={"job_markdown": "Need implementation plan."},
+    )
+    assert manual.status_code == 200
 
-def test_quality_validator_rejects_backward_non_feedback_edges() -> None:
-    spec = _make_spec("roadmap_cards")
-    spec.connections = [
-        DiagramConnection(source_id="s3", target_id="s1", edge_type="sequence"),
-    ]
-    result = validate_diagram_quality(spec=spec, width=1600, height=1200)
-    assert result.passed is False
-    assert any(issue.startswith("edge_backward") for issue in result.errors)
+    response = client.post(
+        f"/api/v1/jobs/{job_id}/outputs/doc-flowchart/generate",
+        json={"instruction": "test"},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "doc_content_missing"

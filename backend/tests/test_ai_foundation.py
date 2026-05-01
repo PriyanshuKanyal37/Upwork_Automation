@@ -18,6 +18,13 @@ def test_routing_defaults_match_blueprint_for_understanding_and_workflow() -> No
     assert workflow_route.fallback_model is None
 
 
+def test_diagram_route_is_configured_for_svg_generation() -> None:
+    diagram_route = get_route_for_task(RouteTask.DIAGRAM)
+
+    assert diagram_route.primary_model == "claude-sonnet-4-6"
+    assert diagram_route.fallback_model == "gpt-5.4"
+
+
 def test_ai_exception_maps_status_code_from_error_code() -> None:
     exc = AIException(code=AIErrorCode.PROVIDER_UNAVAILABLE, message="provider down")
     assert exc.status_code == 503

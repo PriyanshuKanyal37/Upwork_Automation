@@ -18,11 +18,31 @@ def test_register_sets_cookie_and_returns_user(client: TestClient) -> None:
     assert response.status_code == 201
     payload = response.json()
     assert payload["user"]["email"] == email
-    assert "agentloopr_session=" in response.headers.get("set-cookie", "")
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "agentloopr_session=" in set_cookie
+    assert "SameSite=lax" in set_cookie
+    assert "Secure" not in set_cookie
 
     me_response = client.get("/api/v1/auth/me")
     assert me_response.status_code == 200
     assert me_response.json()["user"]["email"] == email
+
+
+def test_secure_auth_cookie_uses_cross_site_policy(client: TestClient, monkeypatch) -> None:
+    from app.interfaces.api.v1 import auth
+
+    monkeypatch.setattr(auth.settings, "auth_cookie_secure", True)
+    email = _unique_email()
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"display_name": "Priya", "email": email, "password": "StrongPass123"},
+    )
+
+    assert response.status_code == 201
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "Secure" in set_cookie
+    assert "SameSite=none" in set_cookie
 
 
 def test_login_logout_flow(client: TestClient) -> None:

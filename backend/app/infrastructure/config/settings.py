@@ -1,8 +1,19 @@
 from functools import lru_cache
+from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from pydantic import field_validator
+from dotenv import dotenv_values
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BACKEND_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+_PROJECT_SCOPED_AI_ENV_KEYS = {
+    "ANTHROPIC_API_KEY": "anthropic_api_key",
+    "ANTHROPIC_BASE_URL": "anthropic_base_url",
+    "ANTHROPIC_API_VERSION": "anthropic_api_version",
+    "OPENAI_API_KEY": "openai_api_key",
+    "OPENAI_BASE_URL": "openai_base_url",
+}
 
 
 class Settings(BaseSettings):
@@ -64,9 +75,6 @@ class Settings(BaseSettings):
     google_docs_api_base_url: str = "https://docs.googleapis.com/v1"
     google_drive_api_base_url: str = "https://www.googleapis.com/drive/v3"
     google_drive_upload_api_base_url: str = "https://www.googleapis.com/upload/drive/v3"
-    diagram_canvas_width: int = 1600
-    diagram_canvas_height: int = 1200
-    diagram_default_creativity_level: str = "high"
     airtable_publish_enabled: bool = False
     airtable_api_base_url: str = "https://api.airtable.com/v0"
     airtable_personal_access_token: str | None = None
@@ -87,11 +95,25 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_BACKEND_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         env_prefix="",
     )
+
+    @model_validator(mode="after")
+    def prefer_project_ai_settings(self) -> "Settings":
+        if self.environment.strip().lower() in {"prod", "production"}:
+            return self
+        if not _BACKEND_ENV_FILE.exists():
+            return self
+
+        local_env = dotenv_values(_BACKEND_ENV_FILE)
+        for env_key, field_name in _PROJECT_SCOPED_AI_ENV_KEYS.items():
+            value = local_env.get(env_key)
+            if value is not None and value.strip():
+                setattr(self, field_name, value.strip())
+        return self
 
     @field_validator("database_url")
     @classmethod
