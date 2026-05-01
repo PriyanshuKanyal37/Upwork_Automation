@@ -5,10 +5,9 @@ import re
 from typing import Any
 from uuid import UUID
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from merm import ParseError, parse_flowchart, render_to_png
 
 from app.application.ai.contracts import ProviderGenerateRequest, ProviderName
 from app.application.connector.service import get_connector_for_user
@@ -22,6 +21,7 @@ from app.infrastructure.integrations.google_oauth import resolve_google_access_t
 _FLOWCHART_ARTIFACT_TYPE = "doc_flowchart"
 _MERMAID_MODEL = "claude-sonnet-4-6"
 _MERMAID_MAX_RETRIES = 1
+_KROKI_BASE_URL = "https://kroki.io"
 
 _MERMAID_CODE_FENCE_PATTERN = re.compile(r"```(?:mermaid)?\s*|\s*```", re.IGNORECASE | re.MULTILINE)
 
@@ -300,78 +300,18 @@ def _build_deterministic_mermaid(
             "Monitor and iterate",
         ]
 
+    points = points[:10]
     n = len(points)
     lines: list[str] = ["flowchart TD", ""]
 
-    # Small diagrams (3-5 nodes): flat flow, no subgraphs
-    if n <= 5:
-        for i, pt in enumerate(points):
-            node_id = f"n{i}"
-            lines.append(f'    {node_id}["{pt}"]')
-        for i in range(n - 1):
-            lines.append(f"    n{i} --> n{i + 1}")
-        if n == 5:
-            lines.append("    n2 --> n4")
-        instruction_text = instruction.strip() if instruction and instruction.strip() else ""
-        instruction_note = f" ({instruction_text})" if instruction_text else ""
-        prefix = [f"%% {title}{instruction_note}", ""]
-        return "\n".join(prefix + lines)
-
-    # Larger diagrams: group into subgraphs of 2-4 nodes each
-    # Determine chunk sizes to avoid tiny leftover chunks
-    if n <= 8:
-        chunk_sizes = [n // 2, n - n // 2]
-    elif n <= 12:
-        chunk_sizes = [n // 3, n // 3, n - 2 * (n // 3)]
-    else:
-        chunk_sizes = [4, 4, 4, n - 12] if n >= 16 else [n // 4] * 3 + [n - 3 * (n // 4)]
-
-    subgraph_labels_map = {
-        0: "Input & Discovery",
-        1: "Processing & Logic",
-        2: "Integration & Handoff",
-        3: "Delivery & Monitoring",
-    }
-
-    node_counter = 0
-    prev_end_id: str | None = None
-    chunk_start = 0
-
-    for sg_idx, size in enumerate([s for s in chunk_sizes if s > 0]):
-        chunk = points[chunk_start : chunk_start + size]
-        chunk_start += size
-        if not chunk:
-            continue
-
-        label = subgraph_labels_map.get(sg_idx, f"Phase {sg_idx + 1}")
-        lines.append(f'    subgraph sg{sg_idx}["{label}"]')
-
-        chunk_ids: list[str] = []
-        for pt in chunk:
-            node_id = f"n{node_counter}"
-            node_counter += 1
-            lines.append(f'        {node_id}["{pt}"]')
-            chunk_ids.append(node_id)
-
-        for i in range(len(chunk_ids) - 1):
-            lines.append(f"        {chunk_ids[i]} --> {chunk_ids[i + 1]}")
-
-        if prev_end_id is not None and chunk_ids:
-            lines.append(f"    {prev_end_id} --> {chunk_ids[0]}")
-
-        prev_end_id = chunk_ids[-1] if chunk_ids else prev_end_id
-        lines.append("    end")
-        lines.append("")
-
-    # Extra cross-subgraph connections for non-linear feel
-    if node_counter >= 8:
-        lines.append(f"    n2 -.-> n{node_counter - 2}")
-    if node_counter >= 6:
-        lines.append(f"    n0 -.-> n{node_counter - 1}")
+    for i, pt in enumerate(points):
+        node_id = f"n{i}"
+        lines.append(f'    {node_id}["{pt}"]')
+    for i in range(n - 1):
+        lines.append(f"    n{i} --> n{i + 1}")
 
     instruction_text = instruction.strip() if instruction and instruction.strip() else ""
     instruction_note = f" ({instruction_text})" if instruction_text else ""
-
     prefix = [f"%% {title}{instruction_note}", ""]
     return "\n".join(prefix + lines)
 
@@ -395,22 +335,25 @@ async def _generate_mermaid_flowchart(
     raw_output = result.output_text or ""
     mermaid_code = _extract_mermaid_code(raw_output)
 
-    try:
-        parse_flowchart(mermaid_code)
-    except ParseError as parse_error:
+    # Lightweight structural check — real validation happens at render time
+    looks_like_flowchart = (
+        mermaid_code.strip().lower().startswith(("flowchart", "graph"))
+        or "--> " in mermaid_code
+    )
+    if not looks_like_flowchart:
         if retry_count >= _MERMAID_MAX_RETRIES:
             raise AppException(
                 status_code=422,
-                code="mermaid_syntax_error",
-                message=f"Mermaid syntax is still invalid after {retry_count + 1} attempts",
-                details={"parse_error": str(parse_error), "mermaid_preview": mermaid_code[:500]},
-            ) from parse_error
+                code="mermaid_structure_invalid",
+                message=f"LLM output is not recognisable Mermaid after {retry_count + 1} attempts",
+                details={"mermaid_preview": mermaid_code[:500]},
+            )
         retry_prompt = (
             f"{prompt}\n\n"
-            "## PREVIOUS ATTEMPT HAD A SYNTAX ERROR\n"
-            f"Error: {parse_error}\n"
-            "Fix the error and return ONLY the corrected Mermaid code block. "
-            "Double-check: no backticks in labels, no semicolons, all labels double-quoted."
+            "## PREVIOUS ATTEMPT WAS INVALID\n"
+            "Your output did not start with 'flowchart LR' and had no '-->' arrows.\n"
+            "Make sure the output starts with 'flowchart LR' and uses '-->' for connections.\n"
+            "Return ONLY the corrected Mermaid code block."
         )
         return await _generate_mermaid_flowchart(prompt=retry_prompt, retry_count=retry_count + 1)
 
@@ -429,33 +372,76 @@ def _build_llm_flowchart_prompt(
     if len(words) > 2500:
         source_text = " ".join(words[:2500]) + "\n\n[...content truncated...]"
 
-    conn_hint = ""
-    if connection_style == "curved":
-        conn_hint = "- Use curved/floating connections between cross-phase nodes where logical\n"
-    elif connection_style == "orthogonal":
-        conn_hint = "- Use orthogonal (horizontal + vertical) connections between subgraphs\n"
-    else:
-        conn_hint = "- Use clean, direct connections between nodes\n"
+    conn_hint = "- Use only --> arrows between nodes"
+    if connection_style == "orthogonal":
+        conn_hint = "- Arrange nodes in clean staggered rows using --> arrows"
 
     instruction_block = ""
     if instruction and instruction.strip():
         instruction_block = f"\n## User Instruction\n{instruction.strip()}\n"
 
     return (
-        "Generate a Mermaid flowchart diagram from this document.\n\n"
+        "Generate a clean Mermaid flowchart diagram from this document.\n\n"
         f"## Document\nTitle: {title}\n\n{source_text}\n\n"
         "## Requirements\n"
-        "- Generate exactly 6-12 nodes total (never fewer than 6)\n"
-        "- Use flowchart TD (top-down) orientation\n"
-        "- Group related steps into 2-4 labeled subgraphs with descriptive names derived from the document\n"
-        "- Include branching (diamond decisions) and parallel flows where the document describes alternatives or conditions\n"
-        "- Do NOT produce a simple linear chain — add at least one branch or parallel path\n"
-        "- Each node label must use specific terminology from the document, not generic filler like \"Analyze\" or \"Design\"\n"
-        "- Keep labels 4-9 words, double-quoted, no backticks, no semicolons, no special characters\n"
-        f"{conn_hint}"
+        "- Use flowchart TD (top-down, vertical) orientation\n"
+        "- Generate 6-10 nodes total — prefer the higher end when the document "
+        "has enough distinct steps\n"
+        "- Do NOT use subgraphs\n"
+        "- Include 1-2 decision diamonds ({{Question?}}) with Yes/No branches "
+        "to show branching logic — the diagram must NOT be a flat linear chain\n"
+        "- After a decision diamond, the Yes/No paths must rejoin or each lead "
+        "to a concrete endpoint\n"
+        f"{conn_hint}\n"
+        "- Make every node label a specific, descriptive action from the "
+        "document. Use the client's own tools, data names, and terminology. "
+        "Never write generic labels like \"Process data\" or \"Analyze\"\n"
+        "- Keep labels 2-8 words, use plain text inside square brackets. "
+        "No double quotes, no backticks, no semicolons, no special characters\n"
+        "- The first 2-3 nodes should describe inputs/triggers/sources, "
+        "the middle should describe processing/decisions/integrations, "
+        "and the last 2-3 should describe outputs/deliverables/notifications\n"
         f"{instruction_block}"
         "Return ONLY a fenced Mermaid code block. No other text."
     )
+
+
+_MERMAID_QUALITY_SUBGRAPH_RE = re.compile(r"\bsubgraph\b", re.IGNORECASE)
+_MERMAID_QUALITY_BAD_EDGE_RE = re.compile(r"-\.->|==>|\.\.->")
+_MERMAID_QUALITY_NODE_RE = re.compile(r'^\s*(?:\w+)\s*[\[\(\{>]', re.MULTILINE)
+_MERMAID_QUALITY_DECISION_RE = re.compile(r'\{[^}]*\}')
+_MERMAID_MAX_NODES = 10
+_MERMAID_MAX_DECISIONS = 2
+
+
+def _validate_mermaid_quality(mermaid_code: str) -> list[str]:
+    issues: list[str] = []
+    if _MERMAID_QUALITY_SUBGRAPH_RE.search(mermaid_code):
+        issues.append("contains subgraphs (not supported for clean layout)")
+    if _MERMAID_QUALITY_BAD_EDGE_RE.search(mermaid_code):
+        issues.append("contains dotted, thick, or dashed arrows")
+    nodes = _MERMAID_QUALITY_NODE_RE.findall(mermaid_code)
+    if len(nodes) > _MERMAID_MAX_NODES:
+        issues.append(f"too many nodes: {len(nodes)} (max {_MERMAID_MAX_NODES})")
+    decisions = _MERMAID_QUALITY_DECISION_RE.findall(mermaid_code)
+    if len(decisions) > _MERMAID_MAX_DECISIONS:
+        issues.append(f"too many decision diamonds: {len(decisions)} (max {_MERMAID_MAX_DECISIONS})")
+    return issues
+
+
+def _build_fallback_mermaid(
+    *,
+    source_text: str,
+    title: str,
+    instruction: str | None,
+) -> tuple[str, str, str, int, int]:
+    points = _extract_key_points(source_text)
+    mermaid_code = _build_deterministic_mermaid(
+        points=points,
+        title=title,
+        instruction=instruction,
+    )
+    return mermaid_code, _MERMAID_MODEL, "anthropic", 0, 0
 
 
 async def _generate_llm_flowchart(
@@ -472,16 +458,40 @@ async def _generate_llm_flowchart(
         connection_style=connection_style,
     )
     try:
-        return await _generate_mermaid_flowchart(prompt=prompt)
+        mermaid_code, model, provider, in_tok, out_tok = await _generate_mermaid_flowchart(prompt=prompt)
     except AppException:
-        # Fall back to deterministic builder on LLM failure
-        points = _extract_key_points(source_text)
-        mermaid_code = _build_deterministic_mermaid(
-            points=points,
-            title=title,
-            instruction=instruction,
+        return _build_fallback_mermaid(
+            source_text=source_text, title=title, instruction=instruction,
         )
-        return mermaid_code, _MERMAID_MODEL, "anthropic", 0, 0
+
+    quality_issues = _validate_mermaid_quality(mermaid_code)
+    if quality_issues:
+        return _build_fallback_mermaid(
+            source_text=source_text, title=title, instruction=instruction,
+        )
+
+    return mermaid_code, model, provider, in_tok, out_tok
+
+
+class _KrokiError(Exception):
+    def __init__(self, status_code: int, body: str) -> None:
+        self.status_code = status_code
+        self.body = body
+        super().__init__(f"Kroki returned {status_code}: {body[:200]}")
+
+
+async def _render_mermaid_via_kroki(mermaid_code: str, *, theme: str = "forest") -> bytes:
+    """Render Mermaid diagram to PNG via Kroki (official mermaid.js)."""
+    theme_directive = f"%%{{init: {{'theme': '{theme}'}}}}%%\n"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(
+            f"{_KROKI_BASE_URL}/mermaid/png",
+            content=theme_directive + mermaid_code,
+            headers={"Content-Type": "text/plain"},
+        )
+        if resp.status_code != 200:
+            raise _KrokiError(resp.status_code, resp.text[:500])
+        return resp.content
 
 
 async def generate_doc_flowchart_for_user(
@@ -536,19 +546,22 @@ async def generate_doc_flowchart_for_user(
     )
 
     try:
-        png_bytes = render_to_png(mermaid_code, theme="forest")
-    except ParseError as render_error:
+        png_bytes = await _render_mermaid_via_kroki(mermaid_code, theme="forest")
+    except _KrokiError as render_error:
         raise AppException(
-            status_code=422,
-            code="mermaid_render_failed",
-            message="Mermaid diagram failed to render to PNG",
-            details={"parse_error": str(render_error)},
+            status_code=502,
+            code="kroki_render_failed",
+            message="Diagram render service returned an error",
+            details={
+                "status_code": render_error.status_code,
+                "body": render_error.body[:500],
+            },
         ) from render_error
-    except Exception as render_error:
+    except (httpx.HTTPError, OSError) as render_error:
         raise AppException(
             status_code=503,
-            code="diagram_render_failed",
-            message="Unexpected error rendering Mermaid diagram",
+            code="diagram_render_unavailable",
+            message="Diagram render service is unreachable",
             details={"error": str(render_error)},
         ) from render_error
 
@@ -587,13 +600,13 @@ async def generate_doc_flowchart_for_user(
             "image_url": image_url,
             "mime_type": mime_type,
             "generated_at": datetime.now(UTC).isoformat(),
-            "source": "mermaid_merm",
+            "source": "kroki",
             "request_id": request_id,
             "flowchart_instruction": _sanitize_optional_text(flowchart_instruction),
             "words_sent": words_sent,
             "estimated_credits_used": 0,
-            "render_engine": "merm",
-            "render_mode": "mermaid",
+            "render_engine": "kroki",
+            "render_mode": "mermaid_js_official",
             "layout_family": "mermaid_auto",
             "orientation": "mermaid_auto",
             "creativity_level": "high",

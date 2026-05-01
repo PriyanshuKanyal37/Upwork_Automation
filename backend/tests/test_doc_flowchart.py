@@ -11,6 +11,21 @@ from app.application.output.service import (
     _extract_mermaid_code,
 )
 
+# Fake PNG ≥ 1024 bytes for tests — avoids network calls to Kroki.
+# 1×1 red pixel with IDAT chunk padded to exceed the 1024-byte minimum size check.
+_FAKE_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x04\x00IDATx\xda\xed\xc1\x01"
+    b"\x01\x00\x00\x00\x82\x20\xff\xafnH@\x01\x00\x00\x00\x01\x00\x00\x00"
+    b"\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+    + b"\x00" * 960
+    + b"\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+async def _fake_render_mermaid_via_kroki(mermaid_code: str, *, theme: str = "forest") -> bytes:
+    return _FAKE_PNG
+
 
 def test_parser_prefers_flow_at_a_glance_section() -> None:
     doc = (
@@ -122,7 +137,7 @@ def test_build_deterministic_mermaid_structure() -> None:
     assert "flowchart TD" in code
     assert '["Analyze project requirements"]' in code
     assert '["Deploy to production environment"]' in code
-    assert "subgraph" in code
+    assert "subgraph" not in code
 
 
 def test_build_deterministic_mermaid_fallback() -> None:
@@ -214,24 +229,17 @@ def test_generate_doc_flowchart_end_to_end(client: TestClient, monkeypatch) -> N
     async def fake_generate_mermaid(*, prompt: str, retry_count: int = 0) -> tuple[str, str, str, int, int]:
         return (
             'flowchart TD\n'
-            '    subgraph sg0["Input & Discovery"]\n'
-            '        n0["Map source events and contracts"]\n'
-            '        n1["Validate input schemas"]\n'
-            '        n0 --> n1\n'
-            '    end\n'
-            '    subgraph sg1["Processing & Logic"]\n'
-            '        n2["Build validation pipeline"]\n'
-            '        n3["Implement dedup logic"]\n'
-            '        n2 --> n3\n'
-            '    end\n'
-            '    subgraph sg2["Delivery & Monitoring"]\n'
-            '        n4["Route records to targets"]\n'
-            '        n5["Send notifications"]\n'
-            '        n4 --> n5\n'
-            '    end\n'
+            '    n0[Map source events and contracts]\n'
+            '    n1[Validate input schemas]\n'
+            '    n2[Build validation pipeline]\n'
+            '    n3[Implement dedup logic]\n'
+            '    n4[Route records to targets]\n'
+            '    n5[Send notifications]\n'
+            '    n0 --> n1\n'
             '    n1 --> n2\n'
+            '    n2 --> n3\n'
             '    n3 --> n4\n'
-            '    n2 -.-> n5\n',
+            '    n4 --> n5\n',
             "claude-sonnet-4-6",
             "anthropic",
             850,
@@ -256,6 +264,7 @@ def test_generate_doc_flowchart_end_to_end(client: TestClient, monkeypatch) -> N
     monkeypatch.setattr(output_service, "resolve_google_access_token", fake_resolve_google_access_token)
     monkeypatch.setattr(output_service, "GoogleDocsClient", FakeGoogleDocsClient)
     monkeypatch.setattr(output_service, "_generate_mermaid_flowchart", fake_generate_mermaid)
+    monkeypatch.setattr(output_service, "_render_mermaid_via_kroki", _fake_render_mermaid_via_kroki)
 
     response = client.post(
         f"/api/v1/jobs/{job_id}/outputs/doc-flowchart/generate",
@@ -268,8 +277,8 @@ def test_generate_doc_flowchart_end_to_end(client: TestClient, monkeypatch) -> N
     assert flowchart is not None
     assert flowchart["status"] == "ready"
     assert flowchart["image_url"].startswith("https://drive.google.com/uc?export=view&id=")
-    assert flowchart["render_engine"] == "merm"
-    assert flowchart["render_mode"] == "mermaid"
+    assert flowchart["render_engine"] == "kroki"
+    assert flowchart["render_mode"] == "mermaid_js_official"
     assert flowchart["spec_source"] == "llm_mermaid"
     assert flowchart["quality_status"] == "passed"
     assert flowchart["flowchart_instruction"] == "Make it implementation focused"
@@ -300,17 +309,13 @@ def test_generate_doc_flowchart_archives_previous(client: TestClient, monkeypatc
     async def fake_generate_mermaid(*, prompt: str, retry_count: int = 0) -> tuple[str, str, str, int, int]:
         return (
             'flowchart TD\n'
-            '    subgraph sg0["Phase 1"]\n'
-            '        n0["Step A"]\n'
-            '        n1["Step B"]\n'
-            '        n0 --> n1\n'
-            '    end\n'
-            '    subgraph sg1["Phase 2"]\n'
-            '        n2["Step C"]\n'
-            '        n3["Step D"]\n'
-            '        n2 --> n3\n'
-            '    end\n'
-            '    n1 --> n2\n',
+            '    n0[Step A]\n'
+            '    n1[Step B]\n'
+            '    n2[Step C]\n'
+            '    n3[Step D]\n'
+            '    n0 --> n1\n'
+            '    n1 --> n2\n'
+            '    n2 --> n3\n',
             "claude-sonnet-4-6",
             "anthropic",
             700,
@@ -332,6 +337,7 @@ def test_generate_doc_flowchart_archives_previous(client: TestClient, monkeypatc
     monkeypatch.setattr(output_service, "resolve_google_access_token", fake_resolve_google_access_token)
     monkeypatch.setattr(output_service, "GoogleDocsClient", FakeGoogleDocsClient)
     monkeypatch.setattr(output_service, "_generate_mermaid_flowchart", fake_generate_mermaid)
+    monkeypatch.setattr(output_service, "_render_mermaid_via_kroki", _fake_render_mermaid_via_kroki)
 
     first = client.post(
         f"/api/v1/jobs/{job_id}/outputs/doc-flowchart/generate",

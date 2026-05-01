@@ -91,7 +91,7 @@ class TargetedRegenerateResponse(BaseModel):
 
 class DocFlowchartGenerateRequest(BaseModel):
     instruction: str | None = Field(default=None, max_length=5000)
-    connection_style: Literal["clean", "orthogonal", "curved"] | None = None
+    connection_style: Literal["clean", "orthogonal"] | None = None
     # Backward-compat: older clients send this key.
     flowchart_instruction: str | None = Field(default=None, max_length=5000)
 

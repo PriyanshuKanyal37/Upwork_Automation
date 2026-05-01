@@ -1,0 +1,166 @@
+{
+  "backend": {
+    "out_dir": "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\backend\\graphify-out",
+    "nodes": 1520,
+    "edges": 3470,
+    "communities": 58
+  },
+  "frontend": {
+    "out_dir": "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\frontend\\graphify-out",
+    "nodes": 154,
+    "edges": 223,
+    "communities": 22
+  },
+  "combined": {
+    "out_dir": "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\graphify-out",
+    "nodes": 1674,
+    "edges": 3693,
+    "communities": 73,
+    "questions": [
+      {
+        "type": "bridge_node",
+        "question": "Why does `User` connect `Auth Authresponse` to `Rollback Gate`, `Revision Downgrade`, `B13 Layer`, `Init__ Flow`, `Workflow Settings`, `Configuration Build`, `Probe_firecrawl_job Apify_probe_output`, `Test_profile Action_catalog`, `Run_uat Sign`, `Webhook Node`, `Trigger_catalog Affiliate`?",
+        "why": "High betweenness centrality (0.131) - this node is a cross-community bridge."
+      },
+      {
+        "type": "bridge_node",
+        "question": "Why does `AppException` connect `Auth Authresponse` to `Make Com`, `Generate Return`, `Rollback Gate`, `Revision Downgrade`, `Extract_title Normalize_connection_style`, `Init__ Flow`, `Probe_firecrawl_job Apify_probe_output`, `Init__ Svg_cache`, `Run_uat Sign`?",
+        "why": "High betweenness centrality (0.118) - this node is a cross-community bridge."
+      },
+      {
+        "type": "bridge_node",
+        "question": "Why does `ProviderGenerateRequest` connect `Generate Init__` to `Auth Authresponse`, `Make Com`, `Generate Return`, `Extract_title Normalize_connection_style`, `Probe_firecrawl_job Apify_probe_output`, `Init__ Svg_cache`?",
+        "why": "High betweenness centrality (0.036) - this node is a cross-community bridge."
+      },
+      {
+        "type": "verify_inferred",
+        "question": "Are the 99 inferred relationships involving `AppException` (e.g. with `AIErrorCode` and `AIException`) actually correct?",
+        "why": "`AppException` has 99 INFERRED edges - model-reasoned connections that need verification."
+      },
+      {
+        "type": "verify_inferred",
+        "question": "Are the 62 inferred relationships involving `User` (e.g. with `ExtractionQualityAssessment` and `Base`) actually correct?",
+        "why": "`User` has 62 INFERRED edges - model-reasoned connections that need verification."
+      },
+      {
+        "type": "verify_inferred",
+        "question": "Are the 49 inferred relationships involving `AIException` (e.g. with `AppException` and `JobClassificationExecution`) actually correct?",
+        "why": "`AIException` has 49 INFERRED edges - model-reasoned connections that need verification."
+      },
+      {
+        "type": "verify_inferred",
+        "question": "Are the 48 inferred relationships involving `ProviderGenerateRequest` (e.g. with `JobClassificationExecution` and `JobExplanationExecution`) actually correct?",
+        "why": "`ProviderGenerateRequest` has 48 INFERRED edges - model-reasoned connections that need verification."
+      }
+    ],
+    "gods": [
+      {
+        "id": "exceptions_appexception",
+        "label": "AppException",
+        "degree": 102
+      },
+      {
+        "id": "user_user",
+        "label": "User",
+        "degree": 79
+      },
+      {
+        "id": "errors_aiexception",
+        "label": "AIException",
+        "degree": 52
+      },
+      {
+        "id": "contracts_providergeneraterequest",
+        "label": "ProviderGenerateRequest",
+        "degree": 50
+      },
+      {
+        "id": "api_requestjson",
+        "label": "requestJson()",
+        "degree": 43
+      },
+      {
+        "id": "anthropic_provider_anthropicprovideradapter",
+        "label": "AnthropicProviderAdapter",
+        "degree": 40
+      },
+      {
+        "id": "contracts_providergenerateresult",
+        "label": "ProviderGenerateResult",
+        "degree": 37
+      },
+      {
+        "id": "contracts_artifactpayload",
+        "label": "ArtifactPayload",
+        "degree": 33
+      },
+      {
+        "id": "orchestrator_service_generate_artifacts",
+        "label": "_generate_artifacts()",
+        "degree": 28
+      },
+      {
+        "id": "contracts_providername",
+        "label": "ProviderName",
+        "degree": 27
+      }
+    ],
+    "surprises": [
+      {
+        "source": "configure_logging()",
+        "target": "get_settings()",
+        "source_files": [
+          "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\backend\\app\\infrastructure\\logging\\setup.py",
+          "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\backend\\app\\infrastructure\\config\\settings.py"
+        ],
+        "confidence": "INFERRED",
+        "relation": "calls",
+        "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities; peripheral node `configure_logging()` unexpectedly reaches hub `get_settings()`"
+      },
+      {
+        "source": "Scaffold client for future Airtable publish activation.",
+        "target": "AppException",
+        "source_files": [
+          "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\backend\\app\\infrastructure\\integrations\\airtable_client.py",
+          "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\backend\\app\\infrastructure\\errors\\exceptions.py"
+        ],
+        "confidence": "INFERRED",
+        "relation": "uses",
+        "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities; peripheral node `Scaffold client for future Airtable publish activation.` unexpectedly reaches hub `AppException`"
+      },
+      {
+        "source": "JobClassificationExecution",
+        "target": "ProviderName",
+        "source_files": [
+          "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\backend\\app\\application\\ai\\job_classifier_service.py",
+          "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\backend\\app\\application\\ai\\contracts.py"
+        ],
+        "confidence": "INFERRED",
+        "relation": "uses",
+        "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+      },
+      {
+        "source": "RouteRule",
+        "target": "ProviderName",
+        "source_files": [
+          "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\backend\\app\\application\\ai\\routing.py",
+          "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\backend\\app\\application\\ai\\contracts.py"
+        ],
+        "confidence": "INFERRED",
+        "relation": "uses",
+        "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+      },
+      {
+        "source": "DiagramSpecBuildResult",
+        "target": "ProviderName",
+        "source_files": [
+          "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\backend\\app\\application\\output\\diagram_spec_service.py",
+          "C:\\Users\\priya\\Desktop\\Ladder\\Upwork_automation\\backend\\app\\application\\ai\\contracts.py"
+        ],
+        "confidence": "INFERRED",
+        "relation": "uses",
+        "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+      }
+    ]
+  }
+}
