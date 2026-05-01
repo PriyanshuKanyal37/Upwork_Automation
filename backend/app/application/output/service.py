@@ -311,7 +311,7 @@ def _build_deterministic_mermaid(
         for i in range(n - 1):
             lines.append(f"    n{i} --> n{i + 1}")
         if n == 5:
-            lines.append(f"    n2 --> n4")
+            lines.append("    n2 --> n4")
         instruction_text = instruction.strip() if instruction and instruction.strip() else ""
         instruction_note = f" ({instruction_text})" if instruction_text else ""
         prefix = [f"%% {title}{instruction_note}", ""]
