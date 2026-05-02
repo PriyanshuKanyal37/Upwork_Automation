@@ -311,7 +311,7 @@ def _build_deterministic_mermaid(
 
     instruction_text = instruction.strip() if instruction and instruction.strip() else ""
     instruction_note = f" ({instruction_text})" if instruction_text else ""
-    prefix = [f"%% {{init: {{\"theme\": \"forest\"}}}}%%", f"%% {title}{instruction_note}", ""]
+    prefix = ["%%{init: {'theme': 'forest'}}%%", f"%% {title}{instruction_note}", ""]
     return "\n".join(prefix + lines)
 
 
