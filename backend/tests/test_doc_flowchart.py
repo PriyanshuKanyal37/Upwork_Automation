@@ -135,8 +135,8 @@ def test_build_deterministic_mermaid_structure() -> None:
     ]
     code = _build_deterministic_mermaid(points=points, title="Test Flow", instruction=None)
     assert "flowchart TD" in code
-    assert '["Analyze project requirements"]' in code
-    assert '["Deploy to production environment"]' in code
+    assert '[Analyze project requirements]' in code
+    assert '[Deploy to production environment]' in code
     assert "subgraph" not in code
 
 
@@ -232,14 +232,13 @@ def test_generate_doc_flowchart_end_to_end(client: TestClient, monkeypatch) -> N
             '    n0[Map source events and contracts]\n'
             '    n1[Validate input schemas]\n'
             '    n2[Build validation pipeline]\n'
-            '    n3[Implement dedup logic]\n'
-            '    n4[Route records to targets]\n'
-            '    n5[Send notifications]\n'
-            '    n0 --> n1\n'
-            '    n1 --> n2\n'
-            '    n2 --> n3\n'
-            '    n3 --> n4\n'
-            '    n4 --> n5\n',
+            '    n3{Is data valid?}\n'
+            '    n4[Implement dedup logic]\n'
+            '    n5[Route records to targets]\n'
+            '    n6[Send notifications]\n'
+            '    n0 --> n1 --> n2 --> n3\n'
+            '    n3 -->|Yes| n4 --> n5\n'
+            '    n3 -->|No| n6\n',
             "claude-sonnet-4-6",
             "anthropic",
             850,
@@ -313,9 +312,7 @@ def test_generate_doc_flowchart_archives_previous(client: TestClient, monkeypatc
             '    n1[Step B]\n'
             '    n2[Step C]\n'
             '    n3[Step D]\n'
-            '    n0 --> n1\n'
-            '    n1 --> n2\n'
-            '    n2 --> n3\n',
+            '    n0 --> n1 --> n2 --> n3\n',
             "claude-sonnet-4-6",
             "anthropic",
             700,

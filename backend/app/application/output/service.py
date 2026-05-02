@@ -305,14 +305,13 @@ def _build_deterministic_mermaid(
     lines: list[str] = ["flowchart TD", ""]
 
     for i, pt in enumerate(points):
-        node_id = f"n{i}"
-        lines.append(f'    {node_id}["{pt}"]')
+        lines.append(f'    n{i}[{pt}]')
     for i in range(n - 1):
         lines.append(f"    n{i} --> n{i + 1}")
 
     instruction_text = instruction.strip() if instruction and instruction.strip() else ""
     instruction_note = f" ({instruction_text})" if instruction_text else ""
-    prefix = [f"%% {title}{instruction_note}", ""]
+    prefix = [f"%% {{init: {{\"theme\": \"forest\"}}}}%%", f"%% {title}{instruction_note}", ""]
     return "\n".join(prefix + lines)
 
 
@@ -351,8 +350,8 @@ async def _generate_mermaid_flowchart(
         retry_prompt = (
             f"{prompt}\n\n"
             "## PREVIOUS ATTEMPT WAS INVALID\n"
-            "Your output did not start with 'flowchart LR' and had no '-->' arrows.\n"
-            "Make sure the output starts with 'flowchart LR' and uses '-->' for connections.\n"
+            "Your output did not start with 'flowchart TD' and had no '-->' arrows.\n"
+            "Make sure the output starts with 'flowchart TD' and uses '-->' for connections.\n"
             "Return ONLY the corrected Mermaid code block."
         )
         return await _generate_mermaid_flowchart(prompt=retry_prompt, retry_count=retry_count + 1)
@@ -372,60 +371,52 @@ def _build_llm_flowchart_prompt(
     if len(words) > 2500:
         source_text = " ".join(words[:2500]) + "\n\n[...content truncated...]"
 
-    conn_hint = "- Use only --> arrows between nodes"
-    if connection_style == "orthogonal":
-        conn_hint = "- Arrange nodes in clean staggered rows using --> arrows"
-
     instruction_block = ""
     if instruction and instruction.strip():
         instruction_block = f"\n## User Instruction\n{instruction.strip()}\n"
 
     return (
-        "Generate a clean Mermaid flowchart diagram from this document.\n\n"
+        "Generate a Mermaid flowchart from this document. Return ONLY a fenced "
+        "Mermaid code block. No other text.\n\n"
         f"## Document\nTitle: {title}\n\n{source_text}\n\n"
-        "## Requirements\n"
-        "- Use flowchart TD (top-down, vertical) orientation\n"
-        "- Generate 6-10 nodes total — prefer the higher end when the document "
-        "has enough distinct steps\n"
-        "- Do NOT use subgraphs\n"
-        "- Include 1-2 decision diamonds ({{Question?}}) with Yes/No branches "
-        "to show branching logic — the diagram must NOT be a flat linear chain\n"
-        "- After a decision diamond, the Yes/No paths must rejoin or each lead "
-        "to a concrete endpoint\n"
-        f"{conn_hint}\n"
-        "- Make every node label a specific, descriptive action from the "
-        "document. Use the client's own tools, data names, and terminology. "
-        "Never write generic labels like \"Process data\" or \"Analyze\"\n"
-        "- Keep labels 2-8 words, use plain text inside square brackets. "
-        "No double quotes, no backticks, no semicolons, no special characters\n"
-        "- The first 2-3 nodes should describe inputs/triggers/sources, "
-        "the middle should describe processing/decisions/integrations, "
-        "and the last 2-3 should describe outputs/deliverables/notifications\n"
-        f"{instruction_block}"
+        "## Layout\n"
+        "- Use flowchart TD (top-to-bottom)\n"
+        "- Include 1-3 decision diamonds ({{label?}}) with |Yes|/|No| branches "
+        "to create natural width — branching spreads the diagram sideways so it "
+        "does not look like a skinny vertical list\n"
+        "- Branch paths should rejoin the main flow when logical, or each lead "
+        "to a distinct endpoint\n"
+        "- After branching, the Yes and No paths can run in parallel columns "
+        "before rejoining — this creates a balanced, wide flow that fills a "
+        "Google Doc naturally\n\n"
+        "## Content\n"
+        "- 7-10 nodes total — compact enough for a one-page doc\n"
+        "- Every node label must be specific and use the client's tools, "
+        "systems, and terminology from the document. No generic filler\n"
+        "- Labels: 2-6 words in [square brackets]. No double quotes, no "
+        "backticks, no semicolons, no special characters\n"
+        "- Write all nodes first, then all connections\n"
+        "- Add |Yes| and |No| labels on decision branches\n"
+        "- Cover: inputs/triggers → processing/decisions → outputs/deliverables\n"
+        f"{instruction_block}\n"
+        "- Add %%{{init: {{'theme': 'forest'}}}}%% at the very top\n\n"
         "Return ONLY a fenced Mermaid code block. No other text."
     )
 
 
-_MERMAID_QUALITY_SUBGRAPH_RE = re.compile(r"\bsubgraph\b", re.IGNORECASE)
-_MERMAID_QUALITY_BAD_EDGE_RE = re.compile(r"-\.->|==>|\.\.->")
 _MERMAID_QUALITY_NODE_RE = re.compile(r'^\s*(?:\w+)\s*[\[\(\{>]', re.MULTILINE)
 _MERMAID_QUALITY_DECISION_RE = re.compile(r'\{[^}]*\}')
-_MERMAID_MAX_NODES = 10
-_MERMAID_MAX_DECISIONS = 2
+_MERMAID_MAX_NODES = 14
 
 
 def _validate_mermaid_quality(mermaid_code: str) -> list[str]:
     issues: list[str] = []
-    if _MERMAID_QUALITY_SUBGRAPH_RE.search(mermaid_code):
-        issues.append("contains subgraphs (not supported for clean layout)")
-    if _MERMAID_QUALITY_BAD_EDGE_RE.search(mermaid_code):
-        issues.append("contains dotted, thick, or dashed arrows")
     nodes = _MERMAID_QUALITY_NODE_RE.findall(mermaid_code)
     if len(nodes) > _MERMAID_MAX_NODES:
         issues.append(f"too many nodes: {len(nodes)} (max {_MERMAID_MAX_NODES})")
     decisions = _MERMAID_QUALITY_DECISION_RE.findall(mermaid_code)
-    if len(decisions) > _MERMAID_MAX_DECISIONS:
-        issues.append(f"too many decision diamonds: {len(decisions)} (max {_MERMAID_MAX_DECISIONS})")
+    if len(decisions) > 6:
+        issues.append(f"too many decision diamonds: {len(decisions)} (max 6)")
     return issues
 
 
